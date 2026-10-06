@@ -6,15 +6,13 @@ use std::time::Duration;
 
 use futures::StreamExt;
 use serde_json::json;
-use tokio::sync::Mutex;
 use tracing::{debug, error, info, trace, warn};
 
 use crate::error::{Error, Result};
+use crate::logger::progress::{FileBar, Progress};
 use crate::types::{FileInfo, FileList, SyncConfig};
-use crate::util::{hash_to_filename, now_ms};
 
 use super::budget::ByteBudget;
-use super::checksum::validate_file;
 use super::cluster::Cluster;
 
 /// Retries per file when syncing, matching `p-retry` in the Node agent.
@@ -49,17 +47,21 @@ impl Cluster {
             "download memory budget"
         );
 
+        let progress = Progress::new(total as u64, !self.config.plain_log);
         let results = futures::stream::iter(missing.into_iter())
             .map(|file| {
                 let done = Arc::clone(&done);
                 let has_error = Arc::clone(&has_error);
                 let budget = &budget;
+                let progress = &progress;
                 async move {
                     // Hold the reservation for the whole download: the body is
                     // buffered so its checksum can be verified, so the budget
                     // has to cover it until the write finishes.
                     let _reservation = budget.acquire(file.size.max(0) as u64).await;
-                    let outcome = self.sync_one(&file).await;
+                    let bar = progress.start_file(&file.path, file.size.max(0) as u64);
+                    let outcome = self.sync_one(&file, progress, bar).await;
+                    progress.finish_file(bar);
                     let processed = done.fetch_add(1, Ordering::Relaxed) + 1;
                     match &outcome {
                         Ok(()) => trace!(path = %file.path, "synced"),
@@ -68,7 +70,9 @@ impl Cluster {
                             error!(error = %e, path = %file.path, "failed to download file");
                         }
                     }
-                    if processed % 100 == 0 || processed == total {
+                    // With the bars on screen a line per file would shred them;
+                    // the fallback keeps a piped pass observable.
+                    if !progress.is_live() && (processed % 100 == 0 || processed == total) {
                         info!(processed, total, "sync progress");
                     }
                     outcome
@@ -78,6 +82,7 @@ impl Cluster {
             .collect::<Vec<_>>()
             .await;
         drop(results);
+        progress.finish();
 
         if has_error.load(Ordering::Relaxed) {
             Err(Error::Other("sync failed".into()))
@@ -125,10 +130,10 @@ impl Cluster {
         Ok(())
     }
 
-    async fn sync_one(&self, file: &FileInfo) -> Result<()> {
+    async fn sync_one(&self, file: &FileInfo, progress: &Progress, bar: FileBar) -> Result<()> {
         let mut attempt = 0u32;
         loop {
-            match self.download_and_store(file).await {
+            match self.download_and_store(file, progress, bar).await {
                 Ok(()) => return Ok(()),
                 Err(failure) => {
                     attempt += 1;
@@ -152,55 +157,6 @@ impl Cluster {
         }
     }
 
-    async fn download_and_store(
-        &self,
-        file: &FileInfo,
-    ) -> std::result::Result<(), DownloadFailure> {
-        let path = file.path.trim_start_matches('/');
-        let requested = format!("{}/{}", self.client.base(), path);
-        let response = self
-            .client
-            .get_stream(path, &[])
-            .await
-            .map_err(DownloadFailure::new)?;
-
-        // `reqwest` follows redirects; the final URL reveals whether the object
-        // actually came from the master or from a CDN.
-        let final_url = response.url().to_string();
-        let redirect = (final_url != requested).then_some(final_url);
-
-        let status = response.status();
-        if !status.is_success() {
-            return Err(DownloadFailure {
-                error: Error::Status {
-                    status: status.as_u16(),
-                    url: file.path.clone(),
-                },
-                redirect,
-            });
-        }
-
-        let mut body = Vec::with_capacity(file.size.max(0) as usize);
-        let mut response = response;
-        while let Some(chunk) = response
-            .chunk()
-            .await
-            .map_err(|e| DownloadFailure::new(e.into()))?
-        {
-            body.extend_from_slice(&chunk);
-        }
-        if !validate_file(&body, &file.hash) {
-            return Err(DownloadFailure {
-                error: Error::Other(format!("checksum mismatch for {}", file.path)),
-                redirect,
-            });
-        }
-        self.storage
-            .write_file(&hash_to_filename(&file.hash), &body, file)
-            .await
-            .map_err(|error| DownloadFailure { error, redirect })
-    }
-
     /// Tell the master that `file` was served from `final_url` instead of the
     /// URL it advertised.
     async fn report_redirect(&self, file: &FileInfo, error: &Error, final_url: String) {
@@ -215,87 +171,6 @@ impl Cluster {
         });
         if let Err(e) = self.client.report(payload).await {
             error!(error = %e, "failed to report redirect");
-        }
-    }
-
-    /// Ensure an object is present locally, de-duplicating concurrent requests.
-    pub async fn ensure_downloaded(&self, hash: &str) -> Result<()> {
-        let hash_path = hash_to_filename(hash);
-        if self.storage.exists(&hash_path).await? {
-            return Ok(());
-        }
-
-        let (lock, fresh) = {
-            let mut locks = self.download_locks.lock().await;
-            match locks.get(hash) {
-                Some(existing) => (Arc::clone(existing), false),
-                None => {
-                    let created = Arc::new(Mutex::new(()));
-                    locks.insert(hash.to_string(), Arc::clone(&created));
-                    (created, true)
-                }
-            }
-        };
-
-        let guard = lock.lock().await;
-        if self.storage.exists(&hash_path).await? {
-            drop(guard);
-            if fresh {
-                self.download_locks.lock().await.remove(hash);
-            }
-            return Ok(());
-        }
-        let result = self.download_file(hash).await;
-        drop(guard);
-        if fresh {
-            self.download_locks.lock().await.remove(hash);
-        }
-        result
-    }
-
-    /// Fetch a single object from the master on demand.
-    pub async fn download_file(&self, hash: &str) -> Result<()> {
-        let response = self
-            .client
-            .get_stream(
-                &format!("openbmclapi/download/{hash}"),
-                &[("noopen", "1".to_string())],
-            )
-            .await?;
-        let status = response.status();
-        if status.as_u16() == 404 {
-            return Err(Error::NotFound);
-        }
-        if !status.is_success() {
-            return Err(Error::Status {
-                status: status.as_u16(),
-                url: format!("openbmclapi/download/{hash}"),
-            });
-        }
-        let body = response.bytes().await?;
-        let info = FileInfo {
-            path: format!("/download/{hash}"),
-            hash: hash.to_string(),
-            size: body.len() as i64,
-            mtime: now_ms(),
-        };
-        self.storage
-            .write_file(&hash_to_filename(hash), &body, &info)
-            .await
-    }
-}
-
-/// A failed file download, carrying the redirect target when there was one.
-struct DownloadFailure {
-    error: Error,
-    redirect: Option<String>,
-}
-
-impl DownloadFailure {
-    fn new(error: Error) -> Self {
-        DownloadFailure {
-            error,
-            redirect: None,
         }
     }
 }

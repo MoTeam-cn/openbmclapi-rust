@@ -11,6 +11,7 @@ mod checksum;
 #[allow(clippy::module_inception)]
 mod cluster;
 mod counters;
+mod download;
 mod master;
 mod sync;
 

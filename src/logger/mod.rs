@@ -8,6 +8,7 @@
 mod console;
 mod files;
 mod format;
+pub mod progress;
 
 use std::path::Path;
 

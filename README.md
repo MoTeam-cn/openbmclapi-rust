@@ -266,6 +266,8 @@ src/
   filelist.rs    手写 Avro 解码器，解析主控文件清单
   cluster/       注册、同步、下载、GC、计数器
                  budget.rs    同步的字节预算闸门
+                 sync.rs      一趟同步：比对清单、限流、重试
+                 download.rs  单个对象的抓取、校验与落盘
   keepalive.rs   每分钟上报循环，出错自动重启
   socketio/      engine.io v4 / socket.io v4 客户端
   server.rs      hyper auto（h1/h2）监听 + rustls 配置
@@ -281,7 +283,9 @@ src/
   types.rs       共享数据类型
   util.rs        哈希、大小与 Range 辅助
   error.rs       错误类型
-  logger/        tracing 初始化：控制台输出 + 按类型分文件的落盘
+  logger/        tracing 初始化：两套行格式 + 按类型分文件的落盘
+                 format.rs    应用行（pino-pretty 形状）与访问行（morgan combined）
+                 progress.rs  同步时的双进度条
 ```
 
 ## 测试
@@ -317,7 +321,9 @@ cargo test --offline --test http_surface
 - nginx 反代到 loopback TCP 端口而非 unix socket，因此在 Windows 上也能用。
 - 阿里云 OSS 与 S3 直接实现（Signature V1 / SigV4），不经过厂商 SDK。
 - `ENABLE_NGINX` 真正生效（上游是 unix socket，这里是 loopback TCP，Windows 也能用）。
-- 日志可按类型落盘到 `LOG_DIR`（access / sync / error / agent 四个文件），上游只有 stdout。
+- 日志行形状对齐上游：应用行是 `[时间] LEVEL (pid): 消息`（pino-pretty 的形状，不打印模块路径），
+  访问行是 morgan 的 `combined`。可按类型落盘到 `LOG_DIR`（access / sync / error / agent）。
+- 同步时保留上游 cli-progress 的双进度条；只在终端绘制，管道下退回每 100 个文件一行。
 - 本地写入原子（先写 `.part` 再 rename）、同步有字节预算与磁盘预检——上游都是整包缓冲且不查空间。
 
 ## 许可证

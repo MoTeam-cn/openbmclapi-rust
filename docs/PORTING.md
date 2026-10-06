@@ -19,7 +19,7 @@ repository.
 | `src/util.ts` | `src/util.rs` | `hashToFilename`, `checkSign`, `getSize` including the range parser. |
 | `src/file.ts` | `cluster::validate_file` | MD5 for 32-char hashes, SHA-1 otherwise. |
 | `src/constants.ts` | `src/filelist.rs` | The avsc schema is replaced by a direct Avro binary decoder. |
-| `src/logger.ts` | `src/logger.rs` | `tracing` + `EnvFilter` instead of pino. |
+| `src/logger.ts` | `src/logger/` | `tracing` + `EnvFilter` instead of pino; the line shapes are reproduced. |
 | `src/routes/auth.route.ts` | `src/routes/auth.rs` | |
 | `src/routes/measure.route.ts` | `src/routes/measure.rs` | |
 | `src/storage/base.storage.ts` | `src/storage/backend.rs`, `src/storage/factory.rs` | `IStorage` → the `Storage` trait plus the factory. |
@@ -68,8 +68,12 @@ These are intentional and each one is a deliberate choice, not an oversight.
 10. **Redirect reporting is coarser.** `reqwest` exposes the final URL but not
     the intermediate chain, so `openbmclapi/report` receives
     `[requested, final]` rather than every hop.
-11. **Progress reporting.** The `cli-progress` multi-bar is replaced by a
-    periodic `sync progress` log line every 100 files.
+11. **Progress reporting.** The `cli-progress` multi-bar is reproduced: two
+    lines redrawn in place, one over the file count and one over the bytes of
+    the object on show. Concurrent downloads each keep their own byte counter
+    and the bar shows the oldest one still in flight, so unrelated files never
+    share a number. The display only draws on a terminal; a piped run, or
+    `PLAIN_LOG`, falls back to the periodic `sync progress` line every 100 files.
 12. **Upstream resilience.** The Node agent had no error boundary on the WebDAV
     and alist paths, so a struggling upstream (typically AList/OpenList) took
     the agent down with it. This port wraps every WebDAV request in a circuit
@@ -128,12 +132,21 @@ These are intentional and each one is a deliberate choice, not an oversight.
     for append, so a restart continues the history and rotation stays with
     logrotate and friends.
 
+22. **Log line shapes.** The application line is what pino-pretty printed with
+    `translateTime: 'SYS:standard'` and `singleLine: true`: local time with its
+    offset, the level, the pid, then the message with any structured fields
+    trailing, and no module path. The access line is morgan's `combined`, which
+    is Apache's common log format plus referrer and user agent; it needs the
+    peer address, so a connection stamps it onto every request it carries.
+    Levels are coloured only when the writer has a terminal.
+
 ## Not ported
 
 * `pkg`-based single-binary packaging (`package.json#pkg`) — `cargo build`
   already produces a self-contained executable.
-* pino's pretty transport. Logging goes through `tracing`; use
-  `LOG_FORMAT=json` for a collector and `PLAIN_LOG` to control ANSI output.
+* pino's pretty transport. Logging goes through `tracing`, with the two line
+  shapes reproduced by hand; use `LOG_FORMAT=json` for a collector and
+  `PLAIN_LOG` to control ANSI output.
 * The Node agent's `.gitlab-ci.yml`, ESLint/Prettier/husky tooling and
   `docker-compose` files. A GitHub Actions workflow replaces the lint/test
   pipeline.
