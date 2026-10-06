@@ -52,19 +52,35 @@ jobs:
           git push origin "HEAD:${{ github.event.repository.default_branch }}"
 
   build:
-    name: ${{ matrix.linkage }} ${{ matrix.target }}
+    name: ${{ matrix.label }}
     needs: sync-version
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    # Windows defaults to pwsh, and every step here is a bash script.
+    defaults:
+      run:
+        shell: bash
     strategy:
       fail-fast: false
       matrix:
         include:
-          # Self-contained: nothing beyond the kernel at run time.
+          # Linux, self-contained: nothing beyond the kernel at run time.
           - target: x86_64-unknown-linux-musl
-            linkage: static
-          # Smaller, but needs a glibc at least as new as the runner's.
+            os: ubuntu-latest
+            label: linux-x86_64-musl-static
+            musl: true
+          # Linux, smaller but needs a glibc at least as new as the runner's.
           - target: x86_64-unknown-linux-gnu
-            linkage: dynamic
+            os: ubuntu-latest
+            label: linux-x86_64-gnu-dynamic
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            label: windows-x86_64
+          - target: x86_64-apple-darwin
+            os: macos-15-intel
+            label: macos-x86_64
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            label: macos-aarch64
     steps:
       - uses: actions/checkout@v7
 
@@ -84,15 +100,21 @@ jobs:
       # zstd-sys is the only C dependency, and the musl target needs its own
       # compiler rather than the host's.
       - name: Install the C toolchain
-        if: matrix.linkage == 'static'
+        if: matrix.musl
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends musl-tools
 
+      # Rewritten per job because the tag's commit predates the sync commit.
+      # awk rather than sed: BSD sed on macOS does not take -i the GNU way.
       - name: Sync the manifest version
         run: |
           set -euo pipefail
-          sed -i "0,/^version = \".*\"/s//version = \"${{ needs.sync-version.outputs.version }}\"/" Cargo.toml
+          awk -v v="${{ needs.sync-version.outputs.version }}" '
+            !done && /^version = "/ { sub(/"[^"]*"/, "\"" v "\""); done = 1 }
+            { print }
+          ' Cargo.toml > Cargo.toml.new
+          mv Cargo.toml.new Cargo.toml
           cargo metadata --format-version 1 >/dev/null
           grep '^version' Cargo.toml
 
@@ -108,19 +130,28 @@ jobs:
         run: |
           set -euo pipefail
           version="${{ needs.sync-version.outputs.version }}"
-          name="openbmclapi-${version}-${{ matrix.target }}-${{ matrix.linkage }}"
+          name="openbmclapi-${version}-${{ matrix.label }}"
+          bin="target/${{ matrix.target }}/release/openbmclapi"
+          if [ -f "${bin}.exe" ]; then
+            bin="${bin}.exe"
+          fi
           mkdir -p "dist/$name"
-          cp "target/${{ matrix.target }}/release/openbmclapi" "dist/$name/"
+          cp "$bin" "dist/$name/"
           cp README.md LICENSE NOTICE "dist/$name/"
           cd dist
           tar -czf "$name.tar.gz" "$name"
-          sha256sum "$name.tar.gz" > "$name.tar.gz.sha256"
+          # macOS ships shasum, not sha256sum.
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "$name.tar.gz" > "$name.tar.gz.sha256"
+          else
+            shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256"
+          fi
           ls -lh
 
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.target }}-${{ matrix.linkage }}
+          name: ${{ matrix.label }}
           path: |
             dist/*.tar.gz
             dist/*.sha256
@@ -129,6 +160,9 @@ jobs:
     needs: [sync-version, build]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
     steps:
       # Full history so the previous tag can be found for the compare link.
       - uses: actions/checkout@v7
@@ -151,8 +185,9 @@ jobs:
             changes="https://github.com/${GITHUB_REPOSITORY}/commits/${tag}"
           fi
           cat > notes.md <<'NOTES'
-          musl-static：静态链接，不依赖系统库。
-          gnu-dynamic：动态链接，需要 glibc。
+          linux-x86_64-musl-static：静态链接，不依赖系统库
+          linux-x86_64-gnu-dynamic：动态链接，需要 glibc
+          windows-x86_64 / macos-x86_64 / macos-aarch64
 
           解压后 ./openbmclapi init 生成配置，再 ./openbmclapi 启动。
 
