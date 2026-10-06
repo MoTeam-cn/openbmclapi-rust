@@ -117,10 +117,11 @@ storage:
 | `NO_DAEMON` | `false` | 单进程运行，不拉起受监管 worker。 |
 | `NO_FAST_ENABLE` | `false` | 要求主控跳过快速启用流程。 |
 | `SYNC_MEMORY_BUDGET` | `256` | 同步时允许同时缓冲的下载字节数（MiB）。 |
-| `SPEEDTEST_SIZES` | `1,2,4,8,16,32,64,128` | 预置到存储后端的测速对象大小（MiB），逗号分隔；留空则关闭预置。 |
+| `MEASURE_SIZES` | `0,1,2,4,8,16,32,64,128` | 预置到远端后端的 measure 对象大小（MiB），逗号分隔；留空关闭预置。`file` 后端始终不预置。 |
 | `LOGLEVEL` | `info` | `trace` / `debug` / `info` / `warn` / `error`。 |
 | `PLAIN_LOG` | `false` | 关闭 ANSI 颜色。 |
 | `LOG_FORMAT` | `pretty` | `json` 时每行输出一个 JSON 对象，供采集器使用。 |
+| `LOG_DIR` | – | 设了就按类型分文件写日志：`access.log` / `sync.log` / `error.log` / `agent.log`。不设则只输出到控制台。 |
 | `RUST_LOG` | – | 设了就覆盖 `LOGLEVEL`，可按模块细调（如 `openbmclapi::cluster=debug`）。 |
 
 ## 存储后端
@@ -212,19 +213,22 @@ alist / OpenList 被打满时会连带把 agent 拖死（Node 版就崩在这里
 而不是继续压。连接池也已调优（`pool_max_idle_per_host` 从 reqwest 默认的无上限降到 16，
 并设置空闲回收、TCP keepalive 与 `read_timeout`，避免长下载被总超时切断）。
 
-### 测速对象
+### measure 对象
 
-`/measure/{size}` 原本在进程内生成数据，那样只测到节点自己的环回，测不到存储后端。
-节点启动时会把 `SPEEDTEST_SIZES` 列出的对象**预置进存储后端**，放在存储根目录下保留的
-`speedtest/` 文件夹里，对象名就是大小（例如 `speedtest/1m`、`speedtest/128m`）。
+`/measure/{size}` 原本在进程内生成数据，只测到节点自己的环回，测不到存储后端。现在的规则按后端分：
 
-- 内容是按大小播种的 xorshift 流，**不可压缩**——重复图案会被 gzip 抹掉，
+| 后端 | 行为 |
+| --- | --- |
+| `file` | **不预置**。本地盘就是节点自己跑的盘，实时生成更快也更省空间。 |
+| 其他（`minio` / `oss` / `webdav` / `alist`，含多源池） | 启动时在存储检查之后，把 `MEASURE_SIZES` 列出的对象**生成并上传**到保留文件夹 `measure/`，对象名就是裸数字：`measure/0`、`measure/1`、`measure/10`。 |
+
+- 探测请求命中已上传的大小时直接由后端应答：webdav / alist / S3 / OSS 返回后端直链（302），
+  客户端从后端拉。这才是「用外部节点测存储」的意义。
+- `measure/0` 是占位对象（0 字节）。主控的存活探测会请求它，必须有响应；
+  未命中任何大小时也会回退到进程内生成，永远不回错误。
+- 载荷是按大小播种的 xorshift 流，**不可压缩**——重复图案会被 gzip 抹掉，
   测出来的吞吐和真实搬数据的速度没有关系。
-- 该文件夹是保留区：五个后端的 GC 都会跳过它，不会被当垃圾清掉。
-- 探测请求因此走完整路径：webdav / alist / S3 / OSS 直接返回后端直链，
-  客户端从后端拉；`file` 后端则流式透传。这才是「用外部节点测存储」的意义。
-- 没预置的大小仍然回退到进程内生成，行为不会退化成报错。
-
+- `measure/` 是保留区：五个后端的 GC 都会跳过它，不会被当垃圾清掉。
 ### 同步与本地缓存
 
 - **字节预算**：同步时按文件大小分配内存额度，默认 256 MiB（`SYNC_MEMORY_BUDGET`）。
@@ -240,7 +244,7 @@ alist / OpenList 被打满时会连带把 agent 拖死（Node 版就崩在这里
 | 路由 | 用途 |
 | --- | --- |
 | `GET /download/{hash}` | 返回已缓存的对象。除设了 `DISABLE_SIGN` 外必须带合法 `s`/`e` 签名。未命中时回源主控拉取，并对并发请求去重、校验和。 |
-| `GET /measure/{size}` | 带宽探针。该大小已预置到存储后端时从后端取（见上节），否则在进程内生成 `0066ccff` 流。上限 200 MiB。 |
+| `GET /measure/{size}` | 带宽探针。远端后端已预置该大小时由后端应答（多为 302 直链），否则进程内生成 `0066ccff` 流。上限 200 MiB。 |
 | `GET /auth` | nginx `auth_request` 的校验端点，校验 `x-original-uri` 的签名，通过回 204、否则 403。nginx 自己算不了 HMAC，靠它决定放行。该 location 是 `internal`，只被 nginx 内部调用。 |
 
 监听端在 TLS（ALPN）下同时说 HTTP/2 与 HTTP/1.1，非 TLS 下为 HTTP/1.1，由 hyper 的
@@ -269,7 +273,7 @@ src/
   storage/       file、minio（S3 SigV4）、oss（阿里云 V1）、webdav、alist
                  multi.rs     多源池：读轮转、写复制、源间故障转移
                  resilience/  熔断、自适应并发、有界重试
-                 speedtest.rs 预置在后端的测速对象（保留文件夹，GC 豁免）
+                 measure.rs   预置在后端的 measure 对象（保留文件夹，GC 豁免）
                  shared/      两套云后端共用的 XML 与对象键辅助
   upnp/          SSDP 发现 + SOAP 端口映射
   nginx.rs       可选的 nginx 前置
@@ -277,7 +281,7 @@ src/
   types.rs       共享数据类型
   util.rs        哈希、大小与 Range 辅助
   error.rs       错误类型
-  logger.rs      tracing 初始化
+  logger/        tracing 初始化：控制台输出 + 按类型分文件的落盘
 ```
 
 ## 测试
@@ -313,6 +317,7 @@ cargo test --offline --test http_surface
 - nginx 反代到 loopback TCP 端口而非 unix socket，因此在 Windows 上也能用。
 - 阿里云 OSS 与 S3 直接实现（Signature V1 / SigV4），不经过厂商 SDK。
 - `ENABLE_NGINX` 真正生效（上游是 unix socket，这里是 loopback TCP，Windows 也能用）。
+- 日志可按类型落盘到 `LOG_DIR`（access / sync / error / agent 四个文件），上游只有 stdout。
 - 本地写入原子（先写 `.part` 再 rename）、同步有字节预算与磁盘预检——上游都是整包缓冲且不查空间。
 
 ## 许可证

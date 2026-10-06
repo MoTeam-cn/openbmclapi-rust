@@ -81,11 +81,11 @@ async fn a_staging_file_is_not_an_object() {
 }
 
 #[tokio::test]
-async fn gc_spares_the_reserved_speed_test_folder() {
+async fn gc_spares_the_reserved_measure_folder() {
     let dir = scratch();
     let storage = FileStorage::new(dir.clone());
     let shard = dir.join("ab");
-    let probes = dir.join("speedtest");
+    let probes = dir.join("measure");
     std::fs::create_dir_all(&shard).expect("the shard directory");
     std::fs::create_dir_all(&probes).expect("the probe directory");
 

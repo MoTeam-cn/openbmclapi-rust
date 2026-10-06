@@ -10,7 +10,7 @@ use axum::response::{IntoResponse, Response};
 use tracing::debug;
 
 use crate::cluster::Cluster;
-use crate::storage::speedtest;
+use crate::storage::measure;
 use crate::util::check_sign;
 
 /// Megabyte payload template (`0066ccff` repeated), matching the Node agent.
@@ -55,8 +55,8 @@ pub async fn measure(
         return StatusCode::BAD_REQUEST.into_response();
     }
 
-    if cluster.config.speedtest_sizes.contains(&(count as u64)) {
-        match speedtest::serve(&*cluster.storage, count as u64).await {
+    if cluster.config.measure_sizes.contains(&(count as u64)) {
+        match measure::serve(&*cluster.storage, count as u64).await {
             Ok(Some((response, stat))) => {
                 cluster.record_served(stat).await;
                 return response;

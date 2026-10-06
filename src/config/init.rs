@@ -52,9 +52,11 @@ const TEMPLATE: &str = r#"# openbmclapi agent configuration.
 
 # Sync tuning.
 # sync_memory_budget: 256   # MiB of download bodies buffered at once
-# speedtest_sizes: [1, 2, 4, 8, 16, 32, 64, 128]   # MiB probes seeded into the backend; [] disables
+# measure_sizes: [0, 1, 2, 4, 8, 16, 32, 64, 128]   # MiB probes seeded into the backend; [] disables
 
-# Logging.
+# Logging. Writing to a directory splits the stream into access.log,
+# sync.log, error.log and agent.log. Rotation is left to the operator.
+# log_dir: "./logs"
 # log_level: "info"
 # plain_log: false
 # disable_access_log: false

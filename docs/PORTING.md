@@ -112,12 +112,21 @@ These are intentional and each one is a deliberate choice, not an oversight.
 
 20. **Bandwidth probes live in the backend.** Node generated the `/measure`
     payload in process, so the probe never touched the storage backend and
-    measured little more than the agent's own loopback. This port seeds one
-    object per configured size under a reserved `speedtest/` folder and serves
-    the probe from there, which exercises the real backend-to-client path. The
-    payload is an incompressible xorshift stream rather than a repeating
-    pattern, so a compressing backend or CDN cannot flatter the measurement,
-    and every backend's GC skips the reserved folder.
+    measured little more than the agent's own loopback. A remote backend now
+    gets one object per configured size, uploaded after the storage check under
+    a reserved `measure/` folder and named by the bare size (`measure/10`), so a
+    probe travels the real backend-to-client path. `measure/0` is an empty
+    placeholder because the master's liveness probe asks for it. The local
+    `file` backend is deliberately not seeded: it is the disk the agent already
+    runs on, so the route keeps generating the payload. The payload is an
+    incompressible xorshift stream rather than a repeating pattern, so a
+    compressing backend or CDN cannot flatter the measurement, and every
+    backend's GC skips the reserved folder.
+21. **Per-category log files.** `LOG_DIR` appends the stream to `access.log`,
+    `sync.log`, `error.log` and `agent.log` alongside the console. Node wrote
+    everything to stdout and left collection to the operator. Files are opened
+    for append, so a restart continues the history and rotation stays with
+    logrotate and friends.
 
 ## Not ported
 

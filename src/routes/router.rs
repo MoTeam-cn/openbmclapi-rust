@@ -38,6 +38,7 @@ async fn log_request(request: Request, next: Next) -> Response {
     let started = std::time::Instant::now();
     let response = next.run(request).await;
     info!(
+        target: crate::logger::ACCESS_TARGET,
         %method,
         path,
         status = response.status().as_u16(),

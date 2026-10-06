@@ -1,10 +1,14 @@
-//! Speed-test objects kept inside the storage backend.
+//! Bandwidth-probe objects kept inside the storage backend.
 //!
-//! The bandwidth probe used to be generated in-process, so it measured the
-//! agent's loopback and never touched the backend. These objects live under a
-//! reserved `speedtest` folder in the storage root instead, so a probe travels
-//! the real path: backend to agent to client, or straight to the backend when
-//! the backend answers with a redirect.
+//! The probe used to be generated in-process, so it measured the agent's
+//! loopback and never touched the backend. Remote backends get one object per
+//! configured size instead, under a reserved `measure` folder, so a probe
+//! travels the real path: the backend answers with its own direct link and the
+//! client pulls from there.
+//!
+//! The local `file` backend is deliberately excluded: it is the same disk the
+//! agent runs on, so generating the payload on the fly is both faster and
+//! cheaper than storing a copy.
 //!
 //! The folder is reserved: no garbage collection may touch it.
 
@@ -18,16 +22,18 @@ use crate::util::now_ms;
 use super::backend::{ServeRequest, ServeStat, Storage};
 
 /// Folder reserved for the probes, inside the storage root.
-pub const DIR: &str = "speedtest";
+pub const DIR: &str = "measure";
 
 /// Whether a storage-relative path lies inside the reserved folder.
 pub fn is_reserved(relative: &str) -> bool {
-    relative == DIR || relative.starts_with("speedtest/")
+    relative == DIR || relative.starts_with("measure/")
 }
 
 /// Storage key of the probe for `size_mib` megabytes.
+///
+/// The name is the bare number, matching what the master asks for.
 pub fn key(size_mib: u64) -> String {
-    format!("{DIR}/{size_mib}m")
+    format!("{DIR}/{size_mib}")
 }
 
 /// Deterministic, incompressible payload for one probe.
@@ -65,7 +71,7 @@ pub async fn ensure(storage: &dyn Storage, sizes: &[u64]) -> Result<usize> {
             Ok(true) => continue,
             Ok(false) => {}
             Err(e) => {
-                warn!(size_mib = size, error = %e, "cannot check the speed-test object");
+                warn!(size_mib = size, error = %e, "cannot check the measure object");
                 continue;
             }
         }
@@ -78,11 +84,11 @@ pub async fn ensure(storage: &dyn Storage, sizes: &[u64]) -> Result<usize> {
         };
         match storage.write_file(&object, &bytes, &info).await {
             Ok(()) => {
-                info!(size_mib = size, "uploaded a speed-test object");
+                info!(size_mib = size, "uploaded a measure object");
                 written += 1;
             }
             Err(e) => {
-                warn!(size_mib = size, error = %e, "cannot upload the speed-test object");
+                warn!(size_mib = size, error = %e, "cannot upload the measure object");
             }
         }
     }
@@ -108,5 +114,5 @@ pub async fn serve(storage: &dyn Storage, size_mib: u64) -> Result<Option<(Respo
 }
 
 #[cfg(test)]
-#[path = "speedtest_test.rs"]
+#[path = "measure_test.rs"]
 mod tests;

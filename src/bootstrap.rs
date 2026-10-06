@@ -90,12 +90,14 @@ pub async fn run(config: Config) -> Result<()> {
         return Err(Error::storage("storage check failed"));
     }
 
-    // Seed the bandwidth probes now that the backend is known writable.
-    if !cluster.config.speedtest_sizes.is_empty() {
+    // Seed the probes now that the backend is known writable. The local cache
+    // is skipped on purpose: it is the disk the agent already runs on, so the
+    // route generates the payload instead of storing a second copy of it.
+    if !cluster.config.uses_local_storage() && !cluster.config.measure_sizes.is_empty() {
         let written =
-            crate::storage::speedtest::ensure(&*cluster.storage, &cluster.config.speedtest_sizes)
+            crate::storage::measure::ensure(&*cluster.storage, &cluster.config.measure_sizes)
                 .await?;
-        info!(written, "seeded speed-test objects");
+        info!(written, "seeded measure objects");
     }
 
     let configuration = cluster.get_configuration().await?;

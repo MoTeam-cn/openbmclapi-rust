@@ -17,9 +17,9 @@ pub const DEFAULT_PORT: u16 = 4000;
 /// Default cap on the download bytes buffered during one sync pass, in MiB.
 pub const DEFAULT_SYNC_MEMORY_MIB: u64 = 256;
 /// Sizes, in MiB, of the speed-test objects seeded into the storage backend.
-pub const DEFAULT_SPEEDTEST_SIZES: &[u64] = &[1, 2, 4, 8, 16, 32, 64, 128];
+pub const DEFAULT_MEASURE_SIZES: &[u64] = &[0, 1, 2, 4, 8, 16, 32, 64, 128];
 /// Largest probe the measure route accepts, in MiB.
-pub const MAX_SPEEDTEST_MIB: u64 = 200;
+pub const MAX_MEASURE_MIB: u64 = 200;
 
 /// Runtime description advertised to the master.
 #[derive(Debug, Clone, Serialize)]
@@ -71,7 +71,9 @@ pub struct Config {
     /// MiB of download bodies that may be buffered at once during a sync.
     pub sync_memory_budget: u64,
     /// MiB sizes of the probes seeded into the storage backend; empty disables.
-    pub speedtest_sizes: Vec<u64>,
+    pub measure_sizes: Vec<u64>,
+    /// Directory for per-category log files; unset keeps logging on the console.
+    pub log_dir: Option<std::path::PathBuf>,
     pub flavor: Flavor,
 }
 
@@ -101,9 +103,9 @@ pub(super) fn parse_size_list(raw: &str) -> Result<Vec<u64>> {
         let size: u64 = part
             .parse()
             .map_err(|e| Error::Config(format!("invalid speed-test size {part:?}: {e}")))?;
-        if size == 0 || size > MAX_SPEEDTEST_MIB {
+        if size == 0 || size > MAX_MEASURE_MIB {
             return Err(Error::Config(format!(
-                "speed-test size {size} is outside 1..={MAX_SPEEDTEST_MIB}"
+                "speed-test size {size} is outside 1..={MAX_MEASURE_MIB}"
             )));
         }
         if !sizes.contains(&size) {
@@ -176,17 +178,29 @@ impl Config {
                 .unwrap_or_else(|| DEFAULT_BMCLAPI_BASE.to_string()),
             no_daemon: bool_var("NO_DAEMON"),
             no_fast_enable: bool_var("NO_FAST_ENABLE"),
+            log_dir: var("LOG_DIR").map(std::path::PathBuf::from),
             log_level: var("LOGLEVEL").unwrap_or_else(|| "info".to_string()),
             plain_log: bool_var("PLAIN_LOG"),
             sync_memory_budget: num_var("SYNC_MEMORY_BUDGET").unwrap_or(DEFAULT_SYNC_MEMORY_MIB),
             // Read this one directly: `var` treats an empty value as unset,
             // and an explicitly empty list is how seeding is turned off.
-            speedtest_sizes: match env::var("SPEEDTEST_SIZES") {
+            measure_sizes: match env::var("MEASURE_SIZES") {
                 Ok(raw) => parse_size_list(&raw)?,
-                Err(_) => DEFAULT_SPEEDTEST_SIZES.to_vec(),
+                Err(_) => DEFAULT_MEASURE_SIZES.to_vec(),
             },
             flavor,
         })
+    }
+
+    /// Whether every configured backend is the local disk cache.
+    ///
+    /// The local backend is never seeded with measure objects: it is the same
+    /// disk the agent runs on, so generating a payload on the fly is cheaper
+    /// than storing a second copy of it.
+    pub fn uses_local_storage(&self) -> bool {
+        self.storage_sources
+            .iter()
+            .all(|source| source.kind == "file")
     }
 
     /// Directory used for the local file cache.

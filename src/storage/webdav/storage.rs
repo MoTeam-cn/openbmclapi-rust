@@ -144,7 +144,7 @@ impl Storage for WebdavStorage {
             for entry in entries {
                 if entry.is_dir {
                     // The reserved probe folder is not part of the master's list.
-                    if entry.name == crate::storage::speedtest::DIR {
+                    if entry.name == crate::storage::measure::DIR {
                         continue;
                     }
                     queue.push(entry.href.clone());

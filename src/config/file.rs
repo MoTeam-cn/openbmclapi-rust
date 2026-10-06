@@ -78,7 +78,10 @@ fn apply(config: &mut Config, root: &Map<String, Value>) -> Result<()> {
             "log_level" => config.log_level = string(key, value)?,
             "plain_log" => config.plain_log = boolean(key, value)?,
             "sync_memory_budget" => config.sync_memory_budget = positive(key, value)?,
-            "speedtest_sizes" => config.speedtest_sizes = size_list(key, value)?,
+            "measure_sizes" => config.measure_sizes = size_list(key, value)?,
+            "log_dir" => {
+                config.log_dir = optional_string(key, value)?.map(std::path::PathBuf::from)
+            }
             "storage" => apply_storage(config, value)?,
             other => {
                 return Err(Error::Config(format!(

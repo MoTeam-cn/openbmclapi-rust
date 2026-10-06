@@ -48,7 +48,12 @@ pub fn entry() -> ExitCode {
         }
     };
     let format = logger::LogFormat::parse(std::env::var("LOG_FORMAT").ok().as_deref());
-    logger::init(&config.log_level, config.plain_log, format);
+    logger::init(
+        &config.log_level,
+        config.plain_log,
+        format,
+        config.log_dir.as_deref(),
+    );
 
     let runtime = match tokio::runtime::Builder::new_multi_thread()
         .enable_all()

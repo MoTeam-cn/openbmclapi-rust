@@ -1,24 +1,25 @@
 use super::{is_reserved, key, payload, DIR};
 
 #[test]
-fn keys_live_under_the_reserved_folder() {
-    assert_eq!(key(1), "speedtest/1m");
-    assert_eq!(key(128), "speedtest/128m");
+fn keys_are_named_by_the_bare_size() {
+    assert_eq!(key(0), "measure/0");
+    assert_eq!(key(10), "measure/10");
+    assert_eq!(key(128), "measure/128");
 }
 
 #[test]
 fn the_reserved_folder_is_recognised_but_nothing_else_is() {
     assert!(is_reserved(DIR));
-    assert!(is_reserved("speedtest/1m"));
+    assert!(is_reserved("measure/10"));
     assert!(!is_reserved("ab/abcdef"));
-    assert!(!is_reserved("speedtest-other/1m"));
-    assert!(!is_reserved("ab/speedtest"));
+    assert!(!is_reserved("measure-other/10"));
+    assert!(!is_reserved("ab/measure"));
 }
 
 #[test]
 fn a_payload_is_exactly_the_requested_size() {
     assert_eq!(payload(1).len(), 1024 * 1024);
-    assert_eq!(payload(0).len(), 0);
+    assert_eq!(payload(0).len(), 0, "size zero is a valid placeholder");
 }
 
 #[test]
