@@ -1,0 +1,77 @@
+//! `GET /download/:hash` — the hot path of the agent.
+
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use axum::extract::{Path, RawQuery, State};
+use axum::http::{header, HeaderMap, StatusCode};
+use axum::response::{IntoResponse, Response};
+use tracing::debug;
+
+use crate::cluster::Cluster;
+use crate::error::Error;
+use crate::storage::ServeRequest;
+use crate::util::{check_sign, hash_to_filename};
+
+/// Serve a cached object, downloading it from the master on a miss.
+pub async fn download(
+    State(cluster): State<Arc<Cluster>>,
+    Path(hash): Path<String>,
+    RawQuery(raw): RawQuery,
+    headers: HeaderMap,
+) -> Response {
+    if !hash.chars().all(|c| c.is_alphanumeric() || c == '_') {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    let hash = hash.to_ascii_lowercase();
+    let params = parse_query(raw.as_deref());
+    let sign_valid = check_sign(&hash, &cluster.config.cluster_secret, &params);
+    if !sign_valid && !cluster.config.disable_sign {
+        return (StatusCode::FORBIDDEN, "invalid sign").into_response();
+    }
+
+    let hash_path = hash_to_filename(&hash);
+    if let Err(e) = cluster.ensure_downloaded(&hash).await {
+        if matches!(e, Error::NotFound) {
+            return StatusCode::NOT_FOUND.into_response();
+        }
+        debug!(error = %e, hash, "download from master failed");
+        return StatusCode::NOT_FOUND.into_response();
+    }
+
+    let range = headers.get(header::RANGE).and_then(|v| v.to_str().ok());
+    let name = params.get("name").map(|s| s.as_str());
+    let request = ServeRequest {
+        hash: &hash,
+        hash_path: &hash_path,
+        range,
+        name,
+    };
+
+    match cluster.storage.serve(request).await {
+        Ok((mut response, stat)) => {
+            if let Ok(value) = hash.parse::<axum::http::HeaderValue>() {
+                response.headers_mut().insert("x-bmclapi-hash", value);
+            }
+            if let Ok(value) = cluster.config.cluster_id.parse::<axum::http::HeaderValue>() {
+                response.headers_mut().insert("x-bmclapi-id", value);
+            }
+            cluster.record_served(stat).await;
+            response
+        }
+        Err(Error::NotFound) => StatusCode::NOT_FOUND.into_response(),
+        Err(e) => {
+            debug!(error = %e, hash, "storage serve failed");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+fn parse_query(raw: Option<&str>) -> HashMap<String, String> {
+    match raw {
+        Some(raw) => form_urlencoded::parse(raw.as_bytes())
+            .map(|(k, v)| (k.into_owned(), v.into_owned()))
+            .collect(),
+        None => HashMap::new(),
+    }
+}
