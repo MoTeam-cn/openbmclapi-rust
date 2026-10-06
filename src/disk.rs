@@ -33,6 +33,10 @@ pub fn usage(path: &Path) -> Result<DiskUsage> {
 }
 
 #[cfg(unix)]
+// The statvfs fields are c_ulong / fsblkcnt_t: 64-bit on the targets we ship but
+// narrower on some 32-bit ones, so the widening casts below are required there
+// and no-ops here. clippy only sees the target it is compiled for.
+#[allow(clippy::unnecessary_cast)]
 fn probe(path: &Path) -> Result<DiskUsage> {
     use std::ffi::CString;
     use std::os::unix::ffi::OsStrExt;
