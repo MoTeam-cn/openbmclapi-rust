@@ -161,7 +161,17 @@ src/<domain>/
 - 跨模块的 `impl` 块：结构体字段用 `pub(super)`，`impl` 可分散在同级模块里。
 - 禁止 `unsafe`，除非确有必要并在注释里给出安全性论证。
 
-## 7. Review 清单
+## 7. 工作流与外部版本
+
+- 写或改 `.github/workflows/` 之前，**逐个核实 action 的当前最新 major 版本**再落笔，
+  禁止凭记忆写。事故记录：长期写 `actions/upload-artifact@v4` 与
+  `actions/download-artifact@v4`，触发 "Node.js 20 is deprecated"，被强制在 Node 24 上运行。
+- 2026-10 已核实：`actions/checkout@v7`、`actions/upload-artifact@v5`、
+  `actions/download-artifact@v6`、`Swatinem/rust-cache@v2`。此表会过期，用前重新核实。
+- 写完回读一遍所有 `uses:` 行，确认没有残留旧 major。
+- 同理适用于 `Cargo.toml` 里任何带版本号的依赖：现查，不抄记忆。
+
+## 8. Review 清单
 
 提交前逐条自问：
 
