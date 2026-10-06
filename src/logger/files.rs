@@ -19,7 +19,8 @@ use tracing_subscriber::registry::LookupSpan;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{EnvFilter, Layer};
 
-use super::LogFormat;
+use super::format::{AccessFormat, AppFormat, Line};
+use super::{console, LogFormat};
 
 /// Target the request-logging middleware emits under.
 pub const ACCESS_TARGET: &str = "openbmclapi::access";
@@ -94,7 +95,6 @@ impl<'a> MakeWriter<'a> for SharedFile {
     }
 }
 
-/// Open the four files and install the subscriber.
 /// The four category files, opened for append.
 struct Files {
     access: SharedFile,
@@ -114,6 +114,7 @@ fn open(dir: &Path) -> io::Result<Files> {
     })
 }
 
+/// Open the four files and install the subscriber.
 pub(super) fn init(
     filter: EnvFilter,
     plain: bool,
@@ -129,58 +130,55 @@ pub(super) fn init(
 
     let json = format == LogFormat::Json;
     // Ignore double initialisation (tests, embedded use).
-    let _ =
-        tracing_subscriber::registry()
-            .with(filter)
-            .with(console_layer(json, plain))
-            .with(file_layer(access, json).with_filter(filter_fn(
+    let _ = tracing_subscriber::registry()
+        .with(filter)
+        .with(console::layer(plain, format, Line::Access).with_filter(filter_fn(access_only)))
+        .with(console::layer(plain, format, Line::App).with_filter(filter_fn(app_only)))
+        .with(
+            file_layer(access, json, Line::Access).with_filter(filter_fn(
                 |meta: &tracing::Metadata<'_>| is_access(meta.target()),
-            )))
-            .with(
-                file_layer(sync, json).with_filter(filter_fn(|meta: &tracing::Metadata<'_>| {
-                    is_sync(meta.target())
-                })),
-            )
-            .with(
-                file_layer(error, json).with_filter(filter_fn(|meta: &tracing::Metadata<'_>| {
-                    is_error(meta.level())
-                })),
-            )
-            .with(
-                file_layer(agent, json).with_filter(filter_fn(|meta: &tracing::Metadata<'_>| {
-                    is_agent(meta.target())
-                })),
-            )
-            .try_init();
+            )),
+        )
+        .with(file_layer(sync, json, Line::App).with_filter(filter_fn(
+            |meta: &tracing::Metadata<'_>| is_sync(meta.target()),
+        )))
+        .with(file_layer(error, json, Line::App).with_filter(filter_fn(
+            |meta: &tracing::Metadata<'_>| is_error(meta.level()),
+        )))
+        .with(file_layer(agent, json, Line::App).with_filter(filter_fn(
+            |meta: &tracing::Metadata<'_>| is_agent(meta.target()),
+        )))
+        .try_init();
     Ok(())
 }
 
-/// The console layer, in whichever shape `LOG_FORMAT` asked for.
-fn console_layer<S>(json: bool, plain: bool) -> Box<dyn Layer<S> + Send + Sync>
-where
-    S: tracing::Subscriber + for<'a> LookupSpan<'a>,
-{
-    if json {
-        Box::new(fmt::layer().json().with_ansi(false))
-    } else {
-        Box::new(fmt::layer().with_target(true).with_ansi(!plain))
-    }
+fn access_only(meta: &tracing::Metadata<'_>) -> bool {
+    is_access(meta.target())
+}
+
+fn app_only(meta: &tracing::Metadata<'_>) -> bool {
+    !is_access(meta.target())
 }
 
 /// One file layer, writing to a single category file.
-fn file_layer<S>(file: SharedFile, json: bool) -> Box<dyn Layer<S> + Send + Sync>
+fn file_layer<S>(file: SharedFile, json: bool, line: Line) -> Box<dyn Layer<S> + Send + Sync>
 where
     S: tracing::Subscriber + for<'a> LookupSpan<'a>,
 {
-    if json {
-        Box::new(fmt::layer().with_writer(file).with_ansi(false).json())
-    } else {
-        Box::new(
+    match (json, line) {
+        (true, _) => Box::new(fmt::layer().with_writer(file).with_ansi(false).json()),
+        (false, Line::Access) => Box::new(
             fmt::layer()
                 .with_writer(file)
                 .with_ansi(false)
-                .with_target(true),
-        )
+                .event_format(AccessFormat),
+        ),
+        (false, Line::App) => Box::new(
+            fmt::layer()
+                .with_writer(file)
+                .with_ansi(false)
+                .event_format(AppFormat),
+        ),
     }
 }
 

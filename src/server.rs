@@ -1,5 +1,6 @@
 //! HTTP/1.1 + HTTP/2 server built on hyper's auto-detecting connection driver.
 
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 use axum::Router;
@@ -9,9 +10,15 @@ use hyper_util::service::TowerToHyperService;
 use tokio::net::TcpListener;
 use tokio::sync::watch;
 use tokio_rustls::TlsAcceptor;
+use tower::Service as _;
 use tracing::{debug, info, warn};
 
 use crate::error::{Error, Result};
+
+/// The peer address of a connection, stamped onto every request it carries so
+/// the access log can name the client the way morgan's `combined` format does.
+#[derive(Debug, Clone, Copy)]
+pub struct PeerAddr(pub SocketAddr);
 
 /// A bound listener plus the router that serves it.
 pub struct HttpServer {
@@ -55,7 +62,6 @@ impl HttpServer {
     /// Accept connections until `close` is called.
     pub async fn serve(self: Arc<Self>) -> Result<()> {
         let mut shutdown = self.shutdown.subscribe();
-        let service = TowerToHyperService::new(self.router.clone());
         info!(addr = %self.listener.local_addr().map(|a| a.to_string()).unwrap_or_default(), tls = self.tls.is_some(), "listening");
 
         loop {
@@ -75,9 +81,16 @@ impl HttpServer {
                             continue;
                         }
                     };
-                    let service = service.clone();
                     let acceptor = self.tls.clone();
+                    let router = self.router.clone();
                     tokio::spawn(async move {
+                        let service = TowerToHyperService::new(tower::service_fn(
+                            move |mut request: hyper::Request<hyper::body::Incoming>| {
+                                request.extensions_mut().insert(PeerAddr(peer));
+                                let mut router = router.clone();
+                                async move { router.call(request).await }
+                            },
+                        ));
                         let builder = AutoBuilder::new(TokioExecutor::new());
                         match acceptor {
                             Some(acceptor) => match acceptor.accept(stream).await {

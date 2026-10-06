@@ -7,6 +7,7 @@
 
 mod console;
 mod files;
+mod format;
 
 use std::path::Path;
 

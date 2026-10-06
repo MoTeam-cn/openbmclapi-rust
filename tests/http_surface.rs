@@ -78,9 +78,13 @@ async fn download_measure_and_auth() {
     std::env::set_var("CLUSTER_ID", "integration-cluster");
     std::env::set_var("CLUSTER_SECRET", SECRET);
     std::env::set_var("CLUSTER_STORAGE", "file");
-    std::env::set_var("DISABLE_ACCESS_LOG", "true");
+    std::env::set_var("DISABLE_ACCESS_LOG", "false");
     std::env::remove_var("CLUSTER_STORAGE_OPTIONS");
 
+    // The access log is left on so the request middleware and the combined
+    // formatter are exercised together; try_init is ignored if a subscriber is
+    // already installed.
+    openbmclapi::logger::init("info", true, openbmclapi::logger::LogFormat::Pretty, None);
     let config = Config::from_env().expect("config");
     let cluster = Cluster::new(config).expect("cluster");
 
