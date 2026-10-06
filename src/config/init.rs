@@ -21,6 +21,16 @@ const TEMPLATE: &str = r#"# openbmclapi agent configuration.
 # cluster_id: "your-cluster-id"
 # cluster_secret: "your-cluster-secret"
 
+# Several nodes in one process. Each needs its own port; the storage backend is
+# shared, so the files are verified once and the rest go straight to activation.
+# instances:
+#   - cluster_id: "your-cluster-id-a"
+#     cluster_secret: "your-cluster-secret-a"
+#     port: 4000
+#   - cluster_id: "your-cluster-id-b"
+#     cluster_secret: "your-cluster-secret-b"
+#     port: 4001
+
 # Listening port and advertised address.
 # port: 4000
 # cluster_ip: "203.0.113.10"

@@ -51,6 +51,15 @@ pub struct Cluster {
 impl Cluster {
     /// Build the cluster and all of its collaborators.
     pub fn new(config: Config) -> Result<Arc<Self>> {
+        let storage = storage::create(&config)?;
+        Self::with_storage(config, storage)
+    }
+
+    /// Build a cluster around an existing backend.
+    ///
+    /// Instances that run in one process share the backend, which is what makes
+    /// the file verification a single pass rather than one per node.
+    pub fn with_storage(config: Config, storage: Arc<dyn Storage>) -> Result<Arc<Self>> {
         let token = TokenManager::new(
             config.cluster_id.clone(),
             config.cluster_secret.clone(),
@@ -59,7 +68,6 @@ impl Cluster {
         )?;
         let client = BmclapiClient::new(&config, token.clone())?;
         let socket = SocketIo::new(&config.bmclapi_base, token);
-        let storage = storage::create(&config)?;
         let host = config.cluster_ip.clone();
         let version = crate::VERSION.to_string();
 

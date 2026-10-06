@@ -10,6 +10,8 @@ use serde::Serialize;
 use crate::error::{Error, Result};
 use crate::util::parse_bool;
 
+use super::instances::Instance;
+
 /// Default master endpoint.
 pub const DEFAULT_BMCLAPI_BASE: &str = "https://openbmclapi.bangbang93.com";
 /// Default listening port.
@@ -74,6 +76,9 @@ pub struct Config {
     pub measure_sizes: Vec<u64>,
     /// Directory for per-category log files; unset keeps logging on the console.
     pub log_dir: Option<std::path::PathBuf>,
+    /// Node identities when several run in this process; empty means one node,
+    /// described by the identity fields above.
+    pub instances: Vec<Instance>,
     pub flavor: Flavor,
 }
 
@@ -119,15 +124,44 @@ fn num_var(name: &str) -> Option<u64> {
     var(name).and_then(|v| v.trim().parse::<u64>().ok())
 }
 
-fn required(name: &str) -> Result<String> {
-    var(name).ok_or_else(|| Error::Config(format!("missing required environment variable {name}")))
+/// Read `CLUSTER_INSTANCES`, a JSON array of node identities.
+fn parse_instances() -> Result<Vec<Instance>> {
+    let Some(raw) = var("CLUSTER_INSTANCES") else {
+        return Ok(Vec::new());
+    };
+    serde_json::from_str(&raw).map_err(|e| Error::Config(format!("invalid CLUSTER_INSTANCES: {e}")))
 }
 
 impl Config {
     /// Read the configuration from the process environment.
     pub fn from_env() -> Result<Self> {
-        let cluster_id = required("CLUSTER_ID")?;
-        let cluster_secret = required("CLUSTER_SECRET")?;
+        let instances = parse_instances()?;
+        if !instances.is_empty() {
+            for key in [
+                "CLUSTER_ID",
+                "CLUSTER_SECRET",
+                "CLUSTER_PORT",
+                "CLUSTER_PUBLIC_PORT",
+                "CLUSTER_IP",
+            ] {
+                if var(key).is_some() {
+                    return Err(Error::Config(format!(
+                        "{key} cannot be combined with CLUSTER_INSTANCES; each instance carries its own"
+                    )));
+                }
+            }
+        }
+        // An identity is only required when no instance list supplies one, so
+        // a file that lists instances works with an otherwise empty
+        // environment. validate() is what enforces it.
+        let (cluster_id, cluster_secret) = if instances.is_empty() {
+            (
+                var("CLUSTER_ID").unwrap_or_default(),
+                var("CLUSTER_SECRET").unwrap_or_default(),
+            )
+        } else {
+            (String::new(), String::new())
+        };
         let port = match var("CLUSTER_PORT") {
             Some(raw) => raw
                 .parse::<u16>()
@@ -179,6 +213,7 @@ impl Config {
             no_daemon: bool_var("NO_DAEMON"),
             no_fast_enable: bool_var("NO_FAST_ENABLE"),
             log_dir: var("LOG_DIR").map(std::path::PathBuf::from),
+            instances,
             log_level: var("LOGLEVEL").unwrap_or_else(|| "info".to_string()),
             plain_log: bool_var("PLAIN_LOG"),
             sync_memory_budget: num_var("SYNC_MEMORY_BUDGET").unwrap_or(DEFAULT_SYNC_MEMORY_MIB),
@@ -211,8 +246,17 @@ impl Config {
     }
 
     /// Temporary working directory for certificates, mirroring the Node agent.
+    ///
+    /// Keyed by identity: several instances in one process would otherwise
+    /// overwrite each other's certificate.
     pub fn tmp_dir(&self) -> std::path::PathBuf {
-        std::env::temp_dir().join("openbmclapi")
+        let id: String = self
+            .cluster_id
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
+            .collect();
+        let id = if id.is_empty() { "node" } else { &id };
+        std::env::temp_dir().join("openbmclapi").join(id)
     }
 }
 

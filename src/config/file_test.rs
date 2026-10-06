@@ -135,6 +135,36 @@ fn an_empty_sources_list_is_rejected() {
 }
 
 #[test]
+fn instances_in_the_file_expand_into_one_config_each() {
+    let _guard = prepare();
+    std::env::remove_var("CLUSTER_ID");
+    std::env::remove_var("CLUSTER_SECRET");
+    let file = TempFile::write(
+        "config.yaml",
+        "instances:\n  - cluster_id: \"a\"\n    cluster_secret: \"sa\"\n    port: 4000\n  - cluster_id: \"b\"\n    cluster_secret: \"sb\"\n    port: 4001\n",
+    );
+    let split = load(Some(file.path()))
+        .expect("load")
+        .split()
+        .expect("split");
+    assert_eq!(split.len(), 2);
+    assert_eq!(split[0].cluster_id, "a");
+    assert_eq!(split[1].port, 4001);
+    assert_eq!(split[1].cluster_public_port, 4001);
+}
+
+#[test]
+fn instances_in_the_file_conflict_with_the_environment_identity() {
+    let _guard = prepare();
+    let file = TempFile::write(
+        "config.yaml",
+        "instances:\n  - cluster_id: \"a\"\n    cluster_secret: \"sa\"\n    port: 4000\n",
+    );
+    let error = load(Some(file.path())).expect_err("the two forms are exclusive");
+    assert!(error.to_string().contains("mutually exclusive"), "{error}");
+}
+
+#[test]
 fn a_measure_list_can_be_a_sequence_or_a_string() {
     let _guard = prepare();
 

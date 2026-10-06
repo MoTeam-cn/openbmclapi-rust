@@ -13,6 +13,7 @@
 | `CLUSTER_STORAGE` | `file` | 存储后端。 |
 | `CLUSTER_STORAGE_OPTIONS` | – | 所选后端的 JSON 选项。 |
 | `CLUSTER_BMCLAPI` | `https://openbmclapi.bangbang93.com` | 主控地址。 |
+| `CLUSTER_INSTANCES` | – | 多个节点身份的 JSON 数组。设了它就不能再设 `CLUSTER_ID` / `CLUSTER_SECRET` / `CLUSTER_PORT` / `CLUSTER_PUBLIC_PORT` / `CLUSTER_IP`。 |
 | `SSL_KEY` / `SSL_CERT` | – | PEM 文件路径或内联 PEM 内容（仅 BYOC）。 |
 | `ENABLE_NGINX` | `false` | 在节点前挂 nginx：nginx 接管公网端口并从磁盘直接吐缓存，节点退到 loopback 端口。需要系统已安装 nginx。 |
 | `ENABLE_UPNP` | `false` | 用 UPnP IGD 映射公网端口。 |
@@ -40,6 +41,37 @@ YAML 读取器是手写的。支持注释、缩进映射、块序列、流式 `[
 单双引号与转义、null / 布尔 / 整数 / 浮点。不支持锚点与别名（`&` `*`）、
 标签（`!`）、多行标量（`|` `>`）、文档分隔符（`---`）、merge key（`<<`）
 与重复键；遇到这些会带行号报错，不会静默误解。
+
+## 多实例
+
+一份配置可以跑多个节点身份，它们**共用一个存储后端**：文件只校验一遍，第一个实例跑完
+之后其余实例直接请求上线。
+
+`@yaml
+instances:
+  - cluster_id: "id-a"
+    cluster_secret: "secret-a"
+    port: 4000
+  - cluster_id: "id-b"
+    cluster_secret: "secret-b"
+    port: 4001
+`@
+
+等价的环境变量写法（JSON 数组）：
+
+`@bash
+CLUSTER_INSTANCES='[{"cluster_id":"id-a","cluster_secret":"secret-a","port":4000},
+                    {"cluster_id":"id-b","cluster_secret":"secret-b","port":4001}]'
+`@
+
+规则：
+
+- 每个实例必须有 `cluster_id`、`cluster_secret` 和独立的 `port`；端口重复直接报错。
+- `cluster_public_port` 缺省等于 `port`，`cluster_ip` 缺省自动探测。
+- `instances` 与顶层的 `cluster_id` / `cluster_secret` / `port` /
+  `cluster_public_port` / `cluster_ip` **互斥**，同时出现直接报错。
+- 多个实例不能和 `ENABLE_NGINX` 或 `ENABLE_UPNP` 一起用：它们各自只认一个公网端口。
+- 每个实例的证书放在各自的临时目录里（按 cluster_id 分），互不覆盖。
 
 ## 多存储源
 

@@ -5,9 +5,10 @@ use std::path::{Path, PathBuf};
 use serde_json::{Map, Value};
 
 use crate::error::{Error, Result};
-use crate::util::parse_bool;
 
 use super::env::{Config, StorageSource};
+use super::instances::Instance;
+use super::value::{boolean, optional_string, port, positive, size_list, string, type_error};
 use super::yaml;
 
 /// File name used when no path is given, relative to the working directory.
@@ -34,25 +35,27 @@ fn load_file(path: Option<&Path>) -> Result<Config> {
         .map(Path::to_path_buf)
         .unwrap_or_else(|| PathBuf::from(DEFAULT_FILE));
     let mut config = Config::from_env()?;
-    let text = match std::fs::read_to_string(&path) {
-        Ok(text) => text,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(config),
+    match std::fs::read_to_string(&path) {
+        Ok(text) => {
+            let document = yaml::parse(&text)
+                .map_err(|e| Error::Config(format!("{}: {e}", path.display())))?;
+            let root = document.as_object().ok_or_else(|| {
+                Error::Config(format!(
+                    "{}: the document root must be a mapping",
+                    path.display()
+                ))
+            })?;
+            apply(&mut config, root)?;
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
         Err(e) => {
             return Err(Error::Config(format!(
                 "cannot read {}: {e}",
                 path.display()
             )));
         }
-    };
-    let document =
-        yaml::parse(&text).map_err(|e| Error::Config(format!("{}: {e}", path.display())))?;
-    let root = document.as_object().ok_or_else(|| {
-        Error::Config(format!(
-            "{}: the document root must be a mapping",
-            path.display()
-        ))
-    })?;
-    apply(&mut config, root)?;
+    }
+    config.validate()?;
     Ok(config)
 }
 
@@ -82,6 +85,7 @@ fn apply(config: &mut Config, root: &Map<String, Value>) -> Result<()> {
             "log_dir" => {
                 config.log_dir = optional_string(key, value)?.map(std::path::PathBuf::from)
             }
+            "instances" => config.instances = instance_list(value)?,
             "storage" => apply_storage(config, value)?,
             other => {
                 return Err(Error::Config(format!(
@@ -91,6 +95,58 @@ fn apply(config: &mut Config, root: &Map<String, Value>) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Read the list of node identities.
+fn instance_list(value: &Value) -> Result<Vec<Instance>> {
+    let items = value
+        .as_array()
+        .ok_or_else(|| type_error("instances", "a list", value))?;
+    if items.is_empty() {
+        return Err(Error::Config(
+            "instances must contain at least one entry".into(),
+        ));
+    }
+    let mut parsed = Vec::with_capacity(items.len());
+    for (index, item) in items.iter().enumerate() {
+        parsed.push(parse_instance(&format!("instances[{index}]"), item)?);
+    }
+    Ok(parsed)
+}
+
+/// Read one node identity entry.
+fn parse_instance(label: &str, value: &Value) -> Result<Instance> {
+    let map = value
+        .as_object()
+        .ok_or_else(|| type_error(label, "a mapping", value))?;
+    for key in map.keys() {
+        if !matches!(
+            key.as_str(),
+            "cluster_id" | "cluster_secret" | "port" | "cluster_public_port" | "cluster_ip"
+        ) {
+            return Err(Error::Config(format!("{label}: unknown key {key:?}")));
+        }
+    }
+    let text = |name: &str| match map.get(name) {
+        Some(value) => string(&format!("{label}.{name}"), value),
+        None => Ok(String::new()),
+    };
+    Ok(Instance {
+        cluster_id: text("cluster_id")?,
+        cluster_secret: text("cluster_secret")?,
+        port: match map.get("port") {
+            Some(value) => port(&format!("{label}.port"), value)?,
+            None => 0,
+        },
+        cluster_public_port: match map.get("cluster_public_port") {
+            Some(value) => Some(port(&format!("{label}.cluster_public_port"), value)?),
+            None => None,
+        },
+        cluster_ip: match map.get("cluster_ip") {
+            Some(value) => optional_string(&format!("{label}.cluster_ip"), value)?,
+            None => None,
+        },
+    })
 }
 
 /// Replace the storage configuration with the one described by value.
@@ -171,100 +227,6 @@ fn parse_source(label: &str, value: &Value) -> Result<StorageSource> {
         kind: kind.to_string(),
         options,
     })
-}
-
-fn string(key: &str, value: &Value) -> Result<String> {
-    match value {
-        Value::String(text) => Ok(text.clone()),
-        Value::Number(number) => Ok(number.to_string()),
-        Value::Bool(flag) => Ok(flag.to_string()),
-        other => Err(type_error(key, "a string", other)),
-    }
-}
-
-fn optional_string(key: &str, value: &Value) -> Result<Option<String>> {
-    match value {
-        Value::Null => Ok(None),
-        other => string(key, other).map(Some),
-    }
-}
-
-fn boolean(key: &str, value: &Value) -> Result<bool> {
-    match value {
-        Value::Bool(flag) => Ok(*flag),
-        Value::String(text) => Ok(parse_bool(text)),
-        Value::Number(number) if number.as_u64() == Some(0) => Ok(false),
-        Value::Number(number) if number.as_u64() == Some(1) => Ok(true),
-        other => Err(type_error(key, "a boolean", other)),
-    }
-}
-
-/// MiB sizes, written either as a sequence or as a comma-separated string.
-fn size_list(key: &str, value: &Value) -> Result<Vec<u64>> {
-    let raw = match value {
-        Value::Array(items) => {
-            let mut parts = Vec::with_capacity(items.len());
-            for item in items {
-                match item {
-                    Value::Number(number) => parts.push(number.to_string()),
-                    Value::String(text) => parts.push(text.clone()),
-                    other => return Err(type_error(key, "a list of sizes", other)),
-                }
-            }
-            parts.join(",")
-        }
-        Value::String(text) => text.clone(),
-        Value::Number(number) => number.to_string(),
-        other => return Err(type_error(key, "a list of sizes", other)),
-    };
-    super::env::parse_size_list(&raw)
-}
-
-fn positive(key: &str, value: &Value) -> Result<u64> {
-    let number = match value {
-        Value::Number(number) => number
-            .as_u64()
-            .ok_or_else(|| type_error(key, "a positive number", value))?,
-        Value::String(text) => text
-            .trim()
-            .parse::<u64>()
-            .map_err(|e| Error::Config(format!("{key:?} is not a number: {e}")))?,
-        other => return Err(type_error(key, "a positive number", other)),
-    };
-    if number == 0 {
-        return Err(Error::Config(format!("{key:?} must be greater than zero")));
-    }
-    Ok(number)
-}
-
-fn port(key: &str, value: &Value) -> Result<u16> {
-    let number = match value {
-        Value::Number(number) => number
-            .as_u64()
-            .ok_or_else(|| type_error(key, "a port number", value))?,
-        Value::String(text) => text
-            .trim()
-            .parse::<u64>()
-            .map_err(|e| Error::Config(format!("{key:?} is not a valid port: {e}")))?,
-        other => return Err(type_error(key, "a port number", other)),
-    };
-    u16::try_from(number)
-        .map_err(|_| Error::Config(format!("{key:?} port {number} is out of range")))
-}
-
-fn type_error(key: &str, expected: &str, value: &Value) -> Error {
-    Error::Config(format!("{key:?} must be {expected}, found {}", kind(value)))
-}
-
-fn kind(value: &Value) -> &'static str {
-    match value {
-        Value::Null => "null",
-        Value::Bool(_) => "a boolean",
-        Value::Number(_) => "a number",
-        Value::String(_) => "a string",
-        Value::Array(_) => "a list",
-        Value::Object(_) => "a mapping",
-    }
 }
 
 #[cfg(test)]

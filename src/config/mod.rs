@@ -8,8 +8,11 @@
 mod env;
 mod file;
 pub(crate) mod init;
+mod instances;
+mod value;
 mod yaml;
 
 pub use env::{Config, Flavor, StorageSource, DEFAULT_BMCLAPI_BASE, DEFAULT_PORT};
 pub use file::{load, DEFAULT_FILE};
 pub(crate) use init::init_template;
+pub use instances::Instance;

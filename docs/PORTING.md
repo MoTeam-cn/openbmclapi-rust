@@ -10,8 +10,8 @@ repository.
 | Node source | Rust module | Notes |
 | --- | --- | --- |
 | `src/index.ts` | `src/main.rs`, `src/daemon.rs` | Worker supervision instead of `cluster.fork`; same backoff (factor 2, cap 60 s, ±20 % jitter, reset on ready). |
-| `src/bootstrap.ts` | `src/bootstrap.rs` | Same ordering: token → connect → certificate → listen → port-check → storage check → sync → GC → enable. |
-| `src/config.ts` | `src/config.rs` | Same `CLUSTER_*` variables and defaults; `.env` still loaded. |
+| `src/bootstrap.ts` | `src/bootstrap/` | Same ordering: token → connect → certificate → listen → port-check → storage check → sync → GC → enable. Every instance shares one storage backend, so that verification runs once. |
+| `src/config.ts` | `src/config/` | Same `CLUSTER_*` variables and defaults; `.env` still loaded. Adds a YAML file and several node identities. |
 | `src/token.ts` | `src/token.rs` | HMAC-SHA256 challenge/response; refresh at `max(ttl − 10 min, ttl/2)`. |
 | `src/cluster.ts` | `src/cluster/`, `src/client.rs`, `src/routes/` | Split into orchestration, the master client and the route handlers. |
 | `src/keepalive.ts` | `src/keepalive.rs` | 60 s reporting, 10 s ack timeout, restart after 3 failures. |
@@ -139,6 +139,12 @@ These are intentional and each one is a deliberate choice, not an oversight.
     is Apache's common log format plus referrer and user agent; it needs the
     peer address, so a connection stamps it onto every request it carries.
     Levels are coloured only when the writer has a terminal.
+
+23. **Several nodes in one process.** `instances` (or `CLUSTER_INSTANCES`) runs
+    several identities at once over one shared storage backend, so the file
+    verification is a single pass and the remaining nodes go straight to
+    activation. Node ran one node per process, which meant one download pass
+    per node against the same backend.
 
 ## Not ported
 
