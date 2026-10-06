@@ -1,167 +1,207 @@
 # openbmclapi-rust
 
-A Rust implementation of the **OpenBMCLAPI** cluster agent — the `bmclapi@home`
-node software that serves Minecraft file mirrors on behalf of
-[`openbmclapi.bangbang93.com`](https://github.com/bangbang93/openbmclapi).
+OpenBMCLAPI 集群节点（`bmclapi@home`）的 Rust 实现，为
+[openbmclapi.bangbang93.com](https://github.com/bangbang93/openbmclapi) 提供 Minecraft 文件镜像服务。
 
-This is a from-scratch port of the Node.js agent **v1.14.0**. The upstream
-TypeScript source is kept in `openbmclapi/` purely as the reference for the port
-and is **not** part of this repository (see `.gitignore`).
+本项目是 Node.js 版 **v1.14.0** 的从零移植。上游 TypeScript 源码保留在 `openbmclapi/`
+目录，仅作移植参考，**不属于**本仓库（见 `.gitignore`）。
 
-## What the agent does
+## 节点做什么
 
-1. Authenticates against the master with an HMAC-SHA256 challenge/response.
-2. Downloads the master's file list (zstd-compressed Avro) and mirrors anything
-   missing into its storage backend, verifying MD5/SHA-1 checksums.
-3. Serves signed `/download/:hash` requests from that storage.
-4. Reports served bytes to the master every minute over socket.io.
-5. Garbage-collects objects that dropped out of the master file list.
+1. 用 HMAC-SHA256 挑战/应答向主控认证。
+2. 下载主控的文件清单（zstd 压缩的 Avro），校验 MD5 / SHA-1 后把缺失文件镜像到存储后端。
+3. 从存储后端响应带签名的 `/download/:hash` 请求。
+4. 每分钟通过 socket.io 上报已服务的字节数。
+5. 清理已从主控文件清单中消失的对象。
 
-## Build
+## 构建
 
 ```bash
 cargo build --release
-# target/release/openbmclapi
+# 产物：target/release/openbmclapi
 ```
 
-Requires Rust 1.82 or newer. TLS is pure-rustls: no OpenSSL and no system
-certificate tooling is needed.
+需要 Rust 1.82 或更新版本。TLS 全部走纯 rustls：不需要 OpenSSL，也不需要系统证书工具。
 
-## Run
+## 运行
 
 ```bash
-export CLUSTER_ID=your-cluster-id
-export CLUSTER_SECRET=your-cluster-secret
+export CLUSTER_ID=你的集群ID
+export CLUSTER_SECRET=你的集群密钥
 ./target/release/openbmclapi
 ```
 
-By default the process forks a supervised worker and restarts it with
-exponential backoff if it dies. Set `NO_DAEMON=1` to run a single foreground
-process, which is what container deployments normally want.
+默认会拉起一个受监管的 worker 进程，worker 退出时按指数退避重启。设 `NO_DAEMON=1`
+可单进程前台运行，容器部署通常用这个。
 
-A `.env` file in the working directory is loaded automatically.
+工作目录下的 `.env` 会被自动加载。
 
-### Configuration
+### 环境变量
 
-| Variable | Default | Description |
+| 变量 | 默认值 | 说明 |
 | --- | --- | --- |
-| `CLUSTER_ID` | **required** | Cluster id issued by the master. |
-| `CLUSTER_SECRET` | **required** | Cluster secret used for HMAC and download signatures. |
-| `CLUSTER_IP` | – | Address advertised to the master when it cannot be auto-detected. |
-| `CLUSTER_PORT` | `4000` | Local listening port. |
-| `CLUSTER_PUBLIC_PORT` | `CLUSTER_PORT` | Port reported to the master. |
-| `CLUSTER_BYOC` | `false` | Bring your own certificate instead of requesting one. |
-| `CLUSTER_STORAGE` | `file` | `file`, `minio`, `oss`, `webdav` or `alist`. |
-| `CLUSTER_STORAGE_OPTIONS` | – | JSON options for the selected backend. |
-| `CLUSTER_BMCLAPI` | `https://openbmclapi.bangbang93.com` | Master base URL. |
-| `SSL_KEY` / `SSL_CERT` | – | PEM path or inline PEM content (BYOC only). |
-| `ENABLE_NGINX` | `false` | Put nginx in front of the agent. |
-| `ENABLE_UPNP` | `false` | Map the public port with UPnP IGD. |
-| `DISABLE_ACCESS_LOG` | `false` | Turn off per-request logging. |
-| `DISABLE_SIGN` | `false` | Skip `s`/`e` signature validation (trusted networks only). |
-| `NO_DAEMON` | `false` | Run a single process instead of supervising a worker. |
-| `NO_FAST_ENABLE` | `false` | Ask the master to skip its fast-enable path. |
-| `LOGLEVEL` | `info` | `trace`, `debug`, `info`, `warn`, `error`. |
-| `PLAIN_LOG` | `false` | Disable ANSI colouring. |
+| `CLUSTER_ID` | **必填** | 主控下发的集群 ID。 |
+| `CLUSTER_SECRET` | **必填** | 集群密钥，用于 HMAC 与下载签名。 |
+| `CLUSTER_IP` | – | 无法自动探测时向主控上报的地址。 |
+| `CLUSTER_PORT` | `4000` | 本地监听端口。 |
+| `CLUSTER_PUBLIC_PORT` | 同 `CLUSTER_PORT` | 向主控上报的端口。 |
+| `CLUSTER_BYOC` | `false` | 自带证书，不向主控申请。 |
+| `CLUSTER_STORAGE` | `file` | 存储后端，见下节。 |
+| `CLUSTER_STORAGE_OPTIONS` | – | 所选后端的 JSON 选项。 |
+| `CLUSTER_BMCLAPI` | `https://openbmclapi.bangbang93.com` | 主控地址。 |
+| `SSL_KEY` / `SSL_CERT` | – | PEM 文件路径或内联 PEM 内容（仅 BYOC）。 |
+| `ENABLE_NGINX` | `false` | 在节点前挂 nginx。 |
+| `ENABLE_UPNP` | `false` | 用 UPnP IGD 映射公网端口。 |
+| `DISABLE_ACCESS_LOG` | `false` | 关闭逐请求访问日志。 |
+| `DISABLE_SIGN` | `false` | 跳过 `s`/`e` 签名校验（仅限可信网络）。 |
+| `NO_DAEMON` | `false` | 单进程运行，不拉起受监管 worker。 |
+| `NO_FAST_ENABLE` | `false` | 要求主控跳过快速启用流程。 |
+| `LOGLEVEL` | `info` | `trace` / `debug` / `info` / `warn` / `error`。 |
+| `PLAIN_LOG` | `false` | 关闭 ANSI 颜色。 |
 
-### Storage options
+## 存储后端
 
-`file` takes no options; objects land in `./cache/<ab>/<hash>`.
+`CLUSTER_STORAGE` 目前支持 **5 个**后端：
+
+| 取值 | 后端 | 寻址 / 签名 | 说明 |
+| --- | --- | --- | --- |
+| `file` | 本地磁盘 | – | 对象落在工作目录的 `cache/<ab>/<hash>`。无需任何选项。 |
+| `minio` | MinIO 及一切 S3 兼容对象存储 | path-style + 自实现 AWS SigV4 | 不依赖 `minio` SDK，支持预签名直链。 |
+| `oss` | 阿里云 OSS | 自实现 Signature V1 | 不依赖 `ali-oss`，默认代理透传，可切直链重定向。 |
+| `webdav` | 通用 WebDAV | 原生 PROPFIND / MKCOL / PUT / DELETE | 不依赖 `webdav` 包。 |
+| `alist` | AList 的 WebDAV | 同上 + 签名直链缓存 | 缓存落盘到 `cache/redirectUrl.json`，启动时载入。 |
+
+### 各后端的 `CLUSTER_STORAGE_OPTIONS`
+
+**`file`** —— 无选项。
+
+**`minio`**
+
+| 键 | 必填 | 说明 |
+| --- | --- | --- |
+| `url` | 是 | 形如 `https://key:secret@host:port/bucket/prefix?region=us-east-1`，凭据、bucket、prefix、region 全在这一条里。 |
+| `internalUrl` | 否 | 内网地址，格式同上；用于主控侧请求，缺省回落到 `url`。 |
 
 ```jsonc
-// minio — the URL carries credentials, bucket, prefix and region
 { "url": "https://key:secret@minio.example.com:9000/bucket/prefix?region=us-east-1",
   "internalUrl": "http://minio.internal:9000/bucket/prefix?region=us-east-1" }
+```
 
-// oss (Aliyun)
+**`oss`**
+
+| 键 | 必填 | 默认 | 说明 |
+| --- | --- | --- | --- |
+| `accessKeyId` | 是 | – | AccessKey ID。 |
+| `accessKeySecret` | 是 | – | AccessKey Secret。 |
+| `bucket` | 是 | – | Bucket 名。 |
+| `prefix` | 否 | 空 | 对象键前缀。 |
+| `internal` | 否 | `false` | 用内网域名（`.aliyuncs.com` 换成 `-internal.aliyuncs.com`）。 |
+| `proxy` | 否 | `true` | `true` 由节点流式透传；`false` 走直链重定向。 |
+| `endpoint` | 否 | – | 直接指定 endpoint，覆盖按 `region` 推导的域名。 |
+| `region` | 否 | `oss-cn-hangzhou` | 地域，可写 `oss-cn-hangzhou`、`cn-hangzhou` 或完整域名。 |
+| `cname` | 否 | `false` | 使用自有 CNAME 域名，不加 `<bucket>.` 前缀。 |
+
+```jsonc
 { "accessKeyId": "…", "accessKeySecret": "…", "bucket": "…", "prefix": "cache",
   "internal": false, "proxy": true, "region": "oss-cn-hangzhou", "cname": false }
+```
 
-// webdav
+**`webdav`**
+
+| 键 | 必填 | 说明 |
+| --- | --- | --- |
+| `url` | 是 | WebDAV 根地址，例如 `https://dav.example.com/remote.php/dav`。 |
+| `basePath` | 否 | 根地址下的子路径，例如 `/openbmclapi`。 |
+| `username` | 否 | 用户名。 |
+| `password` | 否 | 密码。 |
+
+```jsonc
 { "url": "https://dav.example.com/remote.php/dav", "username": "u", "password": "p",
   "basePath": "/openbmclapi" }
+```
 
-// alist — WebDAV plus a signed-redirect cache
+**`alist`** —— 与 `webdav` 相同的四个键，外加：
+
+| 键 | 必填 | 默认 | 说明 |
+| --- | --- | --- | --- |
+| `cacheTtl` | 否 | 3600 秒 | 签名直链缓存时长。数字按**毫秒**解析，字符串按 `1h` / `30m` 这类时长解析。 |
+
+```jsonc
 { "url": "http://alist.local:5244/dav", "username": "u", "password": "p",
   "basePath": "/openbmclapi", "cacheTtl": "1h" }
 ```
 
-## HTTP surface
+## HTTP 接口
 
-| Route | Purpose |
+| 路由 | 用途 |
 | --- | --- |
-| `GET /download/{hash}` | Serve a cached object. Requires a valid `s`/`e` signature unless `DISABLE_SIGN` is set. Misses are fetched from the master, de-duplicated across concurrent requests and checksum-verified. |
-| `GET /measure/{size}` | Bandwidth probe: streams `size` MiB (max 200) of `0066ccff`. |
-| `GET /auth` | nginx `auth_request` target; validates the `x-original-uri` signature. |
+| `GET /download/{hash}` | 返回已缓存的对象。除设了 `DISABLE_SIGN` 外必须带合法 `s`/`e` 签名。未命中时回源主控拉取，并对并发请求去重、校验和。 |
+| `GET /measure/{size}` | 带宽探针，流式返回 `size` MiB（上限 200）的 `0066ccff`。 |
+| `GET /auth` | nginx `auth_request` 的校验端点，校验 `x-original-uri` 的签名。 |
 
-The listener speaks HTTP/2 and HTTP/1.1 over TLS (ALPN) or plain HTTP/1.1,
-negotiated per connection by hyper's auto driver.
+监听端在 TLS（ALPN）下同时说 HTTP/2 与 HTTP/1.1，非 TLS 下为 HTTP/1.1，由 hyper 的
+auto 驱动按连接协商。
 
-## Architecture
+## 架构
 
 ```
 src/
-  main.rs        binary entry (delegates to daemon::entry)
-  daemon.rs      daemon supervisor: worker restart/backoff
-  bootstrap.rs   worker startup: auth, certificate, listen, sync, enable
-  config.rs      environment configuration
-  token.rs       HMAC challenge/response + background token refresh
-  client.rs      master HTTP client (bearer auth, response cache)
-  filelist.rs    hand-rolled Avro decoder for the master file list
-  cluster/       registration, sync, download, GC, counters
-  keepalive.rs   one-minute reporting loop with restart-on-error
-  socketio/      engine.io v4 / socket.io v4 client over websockets
-  server.rs      hyper auto (h1/h2) listener + rustls setup
-  routes/        /auth, /download/{hash}, /measure/{size}
-  storage/       file, minio (S3 SigV4), oss (Aliyun V1), webdav, alist
-                 shared/ holds the XML and key helpers both cloud backends use
-  upnp/          SSDP discovery + SOAP port mapping
-  nginx.rs       optional nginx front-end
-  tls.rs         PEM parsing for rustls
+  main.rs        二进制入口（仅委托给 daemon::entry）
+  daemon.rs      守护进程：worker 重启与指数退避
+  lib.rs         库根：只有模块声明与再导出
+  bootstrap.rs   worker 启动流程：认证、证书、监听、端口检查、同步、启用
+  config.rs      环境变量配置
+  token.rs       HMAC 挑战/应答 + 后台令牌刷新
+  client.rs      主控 HTTP 客户端（Bearer 认证、响应缓存）
+  filelist.rs    手写 Avro 解码器，解析主控文件清单
+  cluster/       注册、同步、下载、GC、计数器
+  keepalive.rs   每分钟上报循环，出错自动重启
+  socketio/      engine.io v4 / socket.io v4 客户端
+  server.rs      hyper auto（h1/h2）监听 + rustls 配置
+  routes/        /auth、/download/{hash}、/measure/{size}
+  storage/       file、minio（S3 SigV4）、oss（阿里云 V1）、webdav、alist
+                 shared/ 放两套云后端共用的 XML 与对象键辅助
+  upnp/          SSDP 发现 + SOAP 端口映射
+  nginx.rs       可选的 nginx 前置
+  tls.rs         rustls 用的 PEM 解析
+  types.rs       共享数据类型
+  util.rs        哈希、大小与 Range 辅助
+  error.rs       错误类型
+  logger.rs      tracing 初始化
 ```
 
-## Tests
+## 测试
 
 ```bash
 cargo test --offline --lib
 cargo test --offline --test http_surface
 ```
 
-Unit tests cover the Avro decoder, signature verification, range arithmetic,
-multistatus parsing, template rendering, duration parsing and both cloud
-signature implementations. `tests/http_surface.rs` boots the real router against
-the file backend and exercises signed downloads, bad signatures, 404s, ranges,
-the measure endpoint and the nginx auth endpoint.
+单元测试覆盖 Avro 解码、签名校验、Range 运算、multistatus 解析、nginx 模板渲染、时长解析
+以及两套云签名实现。`tests/http_surface.rs` 用 file 后端起真实路由，覆盖签名下载、错误
+签名、404、Range、measure 端点与 nginx auth 端点。
 
-## Conventions
+## 代码规范
 
-This repository follows [CLAUDE.md](CLAUDE.md). The parts that bite:
+本仓库遵循 [CLAUDE.md](CLAUDE.md)。几条硬性的：
 
-- No source file may exceed 350 lines; 301–350 needs a written justification.
-- `lib.rs` / `main.rs` / any `mod.rs` is an entry point only — module docs,
-  `mod` declarations and re-exports. Logic belongs in a sibling file.
-- Unit tests live in `<module>_test.rs` next to the module and are pulled in with
-  `#[cfg(test)] #[path = "<module>_test.rs"] mod tests;`. Cross-module tests live in `tests/`.
-- Reuse before writing: the same logic appearing twice must be extracted.
-- Verification is scoped, never `--all-targets`: `cargo check --offline --lib`,
-  `cargo clippy --offline --lib`, `cargo test --offline --lib <module>::`. The whole-crate
-  pass runs once, at collection time.
+- 单个源文件不超过 350 行；301–350 必须写明不拆的理由。
+- `lib.rs` / `main.rs` / 任何 `mod.rs` 只能是入口：模块文档、`mod` 声明与再导出，逻辑放同级文件。
+- 单元测试放同级 `<module>_test.rs`，用 `#[cfg(test)] #[path = "..."] mod tests;` 引入；跨模块测试放 `tests/`。
+- 复用优先：同一段逻辑出现第二次就必须提取。
+- 验证范围化，禁止 `--all-targets`：`cargo check --offline --lib`、`cargo clippy --offline --lib`、
+  `cargo test --offline --lib <module>::`。全量只在收口时跑一次。
 
-## Differences from the Node agent
+## 与 Node 版的差异
 
-See [docs/PORTING.md](docs/PORTING.md) for the full mapping and every deliberate
-deviation. The short version:
+完整映射与每一处刻意偏离见 [docs/PORTING.md](docs/PORTING.md)。要点：
 
-* The runtime is described to the master as `Rust/<version>` instead of
-  `Node.js/<version>`.
-* Storage object keys always use `/` as the separator, so remote keys are
-  identical on every platform (the Node agent used the host separator).
-* nginx proxies to a loopback TCP port instead of a unix socket, so the feature
-  also works on Windows.
-* Aliyun OSS and S3 are implemented directly (SigV4 / OSS V1) instead of through
-  vendor SDKs.
+- 向主控上报的 runtime 是 `Rust/<版本>`，而非 `Node.js/<版本>`。
+- 对象键在所有平台统一用 `/` 分隔，远端键跨平台完全一致（Node 版用宿主分隔符）。
+- nginx 反代到 loopback TCP 端口而非 unix socket，因此在 Windows 上也能用。
+- 阿里云 OSS 与 S3 直接实现（Signature V1 / SigV4），不经过厂商 SDK。
 
-## License
+## 许可证
 
-MIT — see [LICENSE](LICENSE). Ported from
-[bangbang93/openbmclapi](https://github.com/bangbang93/openbmclapi), also MIT.
+MIT，见 [LICENSE](LICENSE)。移植自
+[bangbang93/openbmclapi](https://github.com/bangbang93/openbmclapi)，同样为 MIT。
