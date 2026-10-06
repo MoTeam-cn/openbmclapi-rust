@@ -35,6 +35,9 @@ pub enum Error {
     #[error("unexpected response status {status} for {url}")]
     Status { status: u16, url: String },
 
+    #[error("upstream unavailable, retry in {retry_in_ms} ms")]
+    UpstreamUnavailable { retry_in_ms: u64 },
+
     #[error("timeout: {0}")]
     Timeout(String),
 

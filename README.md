@@ -131,6 +131,22 @@ export CLUSTER_SECRET=你的集群密钥
   "basePath": "/openbmclapi", "cacheTtl": "1h" }
 ```
 
+### 上游弹性
+
+alist / OpenList 被打满时会连带把 agent 拖死（Node 版就崩在这里）。本移植在
+`src/storage/resilience/` 里做了四件事，WebDAV 与 alist 两条路径共用：
+
+| 机制 | 行为 |
+| --- | --- |
+| 自适应并发（AIMD） | 初始 8 并发，每成功一次 +1，上游报错则减半，区间 1–16。自己探到该实例的天花板，不用配置。 |
+| 熔断器 | 连续 5 次失败后断开 15 秒，期间立刻返回失败；冷却后放一个探针请求。429 会**立刻**断开——那是 WebDAV 认证锁定，重试只会延长它。 |
+| 有界重试 | 408/425/5xx 退避重试，最多 3 次，指数增长加抖动，上限 30 秒；带 `Retry-After` 时以它为准。 |
+| 流式代理 | 响应体用 `Body::from_stream` 直接转发，不再整包读进内存——大文件不再撑爆进程。 |
+
+上游不可用时 `/download/{hash}` 返回 **503** 并带 `Retry-After`，客户端应当退避重试，
+而不是继续压。连接池也已调优（`pool_max_idle_per_host` 从 reqwest 默认的无上限降到 16，
+并设置空闲回收、TCP keepalive 与 `read_timeout`，避免长下载被总超时切断）。
+
 ## HTTP 接口
 
 | 路由 | 用途 |

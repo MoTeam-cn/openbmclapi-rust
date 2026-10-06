@@ -17,7 +17,8 @@ use tracing::{error, info, warn};
 
 use crate::error::{Error, Result};
 use crate::storage::shared::{
-    encode_component, encode_filename, encode_path, join_object_key, strip_prefix_key,
+    copy_passthrough, encode_component, encode_filename, encode_path, join_object_key,
+    strip_prefix_key,
 };
 use crate::storage::{ServeRequest, ServeStat, Storage};
 use crate::types::{FileInfo, GcCounter};
@@ -212,19 +213,8 @@ impl Storage for OssStorage {
                 request = request.header(header::RANGE, range);
             }
             let upstream = request.send().await?;
-            let mut builder = Response::builder().status(upstream.status());
-            for name in [
-                header::CONTENT_TYPE,
-                header::CONTENT_LENGTH,
-                header::CONTENT_RANGE,
-                header::ACCEPT_RANGES,
-                header::LAST_MODIFIED,
-                header::ETAG,
-            ] {
-                if let Some(value) = upstream.headers().get(&name) {
-                    builder = builder.header(name, value.clone());
-                }
-            }
+            let builder =
+                copy_passthrough(&upstream, Response::builder().status(upstream.status()));
             let body = Body::from_stream(
                 upstream
                     .bytes_stream()

@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use axum::extract::{Path, RawQuery, State};
-use axum::http::{header, HeaderMap, StatusCode};
+use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use tracing::debug;
 
@@ -60,11 +60,32 @@ pub async fn download(
             response
         }
         Err(Error::NotFound) => StatusCode::NOT_FOUND.into_response(),
+        Err(Error::UpstreamUnavailable { retry_in_ms }) => unavailable(retry_in_ms),
+        // A 5xx that reached us through the backend means the backend is the
+        // one struggling; shed the request with a hint instead of a hard 500.
+        Err(Error::Status { status, .. }) if status >= 500 => unavailable(DEFAULT_RETRY_AFTER_MS),
         Err(e) => {
             debug!(error = %e, hash, "storage serve failed");
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
     }
+}
+
+/// Fallback `Retry-After` when the backend gives no hint of its own.
+const DEFAULT_RETRY_AFTER_MS: u64 = 5_000;
+
+/// 503 plus a `Retry-After` hint, so clients back off instead of retrying hard.
+fn unavailable(retry_in_ms: u64) -> Response {
+    let seconds = retry_in_ms.div_ceil(1000).max(1);
+    let mut response = (
+        StatusCode::SERVICE_UNAVAILABLE,
+        "storage backend temporarily unavailable",
+    )
+        .into_response();
+    if let Ok(value) = HeaderValue::from_str(&seconds.to_string()) {
+        response.headers_mut().insert(header::RETRY_AFTER, value);
+    }
+    response
 }
 
 fn parse_query(raw: Option<&str>) -> HashMap<String, String> {

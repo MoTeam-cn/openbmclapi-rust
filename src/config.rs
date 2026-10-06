@@ -15,6 +15,10 @@ pub const DEFAULT_PORT: u16 = 4000;
 pub struct Flavor {
     pub runtime: String,
     pub storage: String,
+    /// Marks this implementation so the master can tell the port from the Node agent.
+    pub implementation: String,
+    /// Where this port lives, for operators reading the master's node list.
+    pub repo: String,
 }
 
 /// Agent configuration, read from the process environment.
@@ -88,6 +92,8 @@ impl Config {
         let flavor = Flavor {
             runtime: format!("Rust/{}", crate::VERSION),
             storage: storage.clone(),
+            implementation: "openbmclapi-rust".to_string(),
+            repo: "https://github.com/MoTeam-cn/openbmclapi-rust".to_string(),
         };
         Ok(Config {
             cluster_id,

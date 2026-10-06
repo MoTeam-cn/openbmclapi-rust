@@ -2,12 +2,17 @@
 //!
 //! Wraps the verbs the backend needs (PROPFIND / MKCOL / PUT / DELETE) and owns
 //! the URL encoding rules, so callers never build WebDAV URLs by hand.
+//!
+//! Every request also goes through the resilience policy: a circuit breaker, an
+//! adaptive concurrency cap and bounded retries. That is what keeps the agent
+//! alive when the upstream — usually AList/OpenList — is the thing struggling.
 
 use std::time::Duration;
 
 use axum::http::{header, StatusCode};
 
 use crate::error::{Error, Result};
+use crate::storage::resilience::{ResilienceConfig, ResilientClient};
 
 use super::xml::{parse_multistatus, DavEntry};
 
@@ -20,10 +25,10 @@ const PROPFIND_BODY: &str = r#"<?xml version="1.0" encoding="utf-8"?>
   </D:prop>
 </D:propfind>"#;
 
-/// Thin WebDAV client.
+/// Thin WebDAV client with upstream protection built in.
 #[derive(Clone)]
 pub struct WebdavClient {
-    http: reqwest::Client,
+    http: ResilientClient,
     base: String,
     username: Option<String>,
     password: Option<String>,
@@ -32,13 +37,19 @@ pub struct WebdavClient {
 impl WebdavClient {
     /// Build a client rooted at `base`; TLS validation stays off to match the Node agent.
     pub fn new(base: &str, username: Option<String>, password: Option<String>) -> Result<Self> {
-        let http = reqwest::Client::builder()
+        let raw = reqwest::Client::builder()
             .danger_accept_invalid_certs(true)
             .connect_timeout(Duration::from_secs(10))
-            .timeout(Duration::from_secs(300))
+            // A total timeout would cut long downloads off; a read timeout only
+            // fires when the upstream stops sending data.
+            .read_timeout(Duration::from_secs(60))
+            .pool_max_idle_per_host(16)
+            .pool_idle_timeout(Duration::from_secs(60))
+            .tcp_keepalive(Duration::from_secs(30))
+            .tcp_nodelay(true)
             .build()?;
         Ok(WebdavClient {
-            http,
+            http: ResilientClient::new(raw, ResilienceConfig::default()),
             base: base.trim_end_matches('/').to_string(),
             username,
             password,
@@ -47,7 +58,7 @@ impl WebdavClient {
 
     /// Build a request with basic auth applied when configured.
     pub fn request(&self, method: reqwest::Method, url: &str) -> reqwest::RequestBuilder {
-        let mut builder = self.http.request(method, url);
+        let mut builder = self.http.raw().request(method, url);
         if let (Some(user), Some(pass)) = (&self.username, &self.password) {
             builder = builder.basic_auth(user, Some(pass));
         }
@@ -64,14 +75,28 @@ impl WebdavClient {
         self.url(path)
     }
 
+    /// Current adaptive concurrency cap, for logging and tests.
+    pub fn concurrency_limit(&self) -> usize {
+        self.http.concurrency_limit()
+    }
+
+    /// Send one logical request through the resilience policy.
+    async fn send<F>(&self, url: &str, build: F) -> Result<reqwest::Response>
+    where
+        F: Fn() -> reqwest::RequestBuilder,
+    {
+        self.http.send(url, build).await
+    }
+
     /// PROPFIND with the given depth, returning the parsed entries.
     pub async fn propfind(&self, url: &str, depth: u32) -> Result<Vec<DavEntry>> {
         let response = self
-            .request(reqwest::Method::from_bytes(b"PROPFIND").unwrap(), url)
-            .header("Depth", depth.to_string())
-            .header(header::CONTENT_TYPE, "application/xml; charset=utf-8")
-            .body(PROPFIND_BODY)
-            .send()
+            .send(url, || {
+                self.request(propfind_method(), url)
+                    .header("Depth", depth.to_string())
+                    .header(header::CONTENT_TYPE, "application/xml; charset=utf-8")
+                    .body(PROPFIND_BODY)
+            })
             .await?;
         let status = response.status();
         if status == StatusCode::NOT_FOUND {
@@ -105,8 +130,7 @@ impl WebdavClient {
         for segment in relative.split('/').filter(|s| !s.is_empty()) {
             current = format!("{current}/{}", encode_segment(segment));
             let response = self
-                .request(reqwest::Method::from_bytes(b"MKCOL").unwrap(), &current)
-                .send()
+                .send(&current, || self.request(mkcol_method(), &current))
                 .await?;
             let status = response.status();
             // 405 means it already exists, which is fine.
@@ -122,9 +146,10 @@ impl WebdavClient {
     /// PUT `content` to `url`.
     pub async fn put(&self, url: &str, content: &[u8]) -> Result<()> {
         let response = self
-            .request(reqwest::Method::PUT, url)
-            .body(content.to_vec())
-            .send()
+            .send(url, || {
+                self.request(reqwest::Method::PUT, url)
+                    .body(content.to_vec())
+            })
             .await?;
         let status = response.status();
         if !status.is_success() {
@@ -138,7 +163,9 @@ impl WebdavClient {
 
     /// DELETE `url`; a missing object is not an error.
     pub async fn delete(&self, url: &str) -> Result<()> {
-        let response = self.request(reqwest::Method::DELETE, url).send().await?;
+        let response = self
+            .send(url, || self.request(reqwest::Method::DELETE, url))
+            .await?;
         let status = response.status();
         if !status.is_success() && status != StatusCode::NOT_FOUND {
             return Err(Error::Status {
@@ -148,6 +175,14 @@ impl WebdavClient {
         }
         Ok(())
     }
+}
+
+fn propfind_method() -> reqwest::Method {
+    reqwest::Method::from_bytes(b"PROPFIND").expect("PROPFIND is a valid HTTP method token")
+}
+
+fn mkcol_method() -> reqwest::Method {
+    reqwest::Method::from_bytes(b"MKCOL").expect("MKCOL is a valid HTTP method token")
 }
 
 /// Join a base URL with a `/`-separated path, percent-encoding each segment.

@@ -12,6 +12,7 @@ use async_trait::async_trait;
 use axum::body::Body;
 use axum::http::header;
 use axum::response::Response;
+use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::sync::Mutex;
@@ -20,6 +21,9 @@ use tracing::{debug, warn};
 use crate::error::{Error, Result};
 use crate::types::{FileInfo, GcCounter};
 use crate::util::{get_size, now_ms};
+
+use crate::storage::resilience::{ResilienceConfig, ResilientClient};
+use crate::storage::shared::copy_passthrough;
 
 use super::webdav::{empty_ok, redirect, WebdavStorage};
 use super::{ServeRequest, ServeStat, Storage};
@@ -97,7 +101,7 @@ impl RedirectCache {
 pub struct AlistStorage {
     inner: WebdavStorage,
     cache: RedirectCache,
-    http: reqwest::Client,
+    http: ResilientClient,
 }
 
 impl AlistStorage {
@@ -112,12 +116,19 @@ impl AlistStorage {
             .unwrap_or_else(|_| PathBuf::from("."))
             .join("cache")
             .join("redirectUrl.json");
-        let http = reqwest::Client::builder()
+        let raw = reqwest::Client::builder()
             .danger_accept_invalid_certs(true)
+            // The signed link is expected to answer 302; the agent replays that
+            // to its own client rather than following it here.
             .redirect(reqwest::redirect::Policy::none())
             .connect_timeout(Duration::from_secs(10))
-            .timeout(Duration::from_secs(30))
+            .read_timeout(Duration::from_secs(60))
+            .pool_max_idle_per_host(16)
+            .pool_idle_timeout(Duration::from_secs(60))
+            .tcp_keepalive(Duration::from_secs(30))
+            .tcp_nodelay(true)
             .build()?;
+        let http = ResilientClient::new(raw, ResilienceConfig::default());
         Ok(AlistStorage {
             inner,
             cache: RedirectCache {
@@ -187,27 +198,32 @@ impl Storage for AlistStorage {
             .inner
             .client()
             .download_link(&self.inner.remote(req.hash_path));
-        let mut request = self.http.get(&url);
-        if let Some(range) = req.range {
-            request = request.header(header::RANGE, range);
-        }
-        let response = request.send().await?;
+        let response = self
+            .http
+            .send(&url, || {
+                let builder = self.http.raw().get(&url);
+                match req.range {
+                    Some(range) => builder.header(header::RANGE, range),
+                    None => builder,
+                }
+            })
+            .await?;
         let status = response.status();
 
         if status.is_success() {
-            let body = response.bytes().await?;
-            let length = body.len() as u64;
-            let reply = Response::builder()
-                .status(status)
-                .body(Body::from(body))
+            // Stream rather than buffer: a mirror object can be hundreds of
+            // megabytes, and buffering it is what used to kill the agent.
+            let bytes = response.content_length().unwrap_or(size.max(0) as u64);
+            let builder = copy_passthrough(&response, Response::builder().status(status));
+            let body = Body::from_stream(
+                response
+                    .bytes_stream()
+                    .map(|result| result.map_err(std::io::Error::other)),
+            );
+            let reply = builder
+                .body(body)
                 .map_err(|e| Error::Other(format!("failed to build response: {e}")))?;
-            return Ok((
-                reply,
-                ServeStat {
-                    bytes: length,
-                    hits: 1,
-                },
-            ));
+            return Ok((reply, ServeStat { bytes, hits: 1 }));
         }
 
         if status.is_redirection() {
@@ -230,12 +246,10 @@ impl Storage for AlistStorage {
         }
 
         warn!(status = status.as_u16(), "alist download failed");
-        let body = response.bytes().await?;
-        let reply = Response::builder()
-            .status(status)
-            .body(Body::from(body))
-            .map_err(|e| Error::Other(format!("failed to build response: {e}")))?;
-        Ok((reply, ServeStat { bytes: 0, hits: 0 }))
+        Err(Error::Status {
+            status: status.as_u16(),
+            url,
+        })
     }
 }
 

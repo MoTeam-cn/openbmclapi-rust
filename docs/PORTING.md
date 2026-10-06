@@ -70,6 +70,13 @@ These are intentional and each one is a deliberate choice, not an oversight.
     `[requested, final]` rather than every hop.
 11. **Progress reporting.** The `cli-progress` multi-bar is replaced by a
     periodic `sync progress` log line every 100 files.
+12. **Upstream resilience.** The Node agent had no error boundary on the WebDAV
+    and alist paths, so a struggling upstream (typically AList/OpenList) took
+    the agent down with it. This port wraps every WebDAV request in a circuit
+    breaker, an adaptive concurrency cap and bounded retries, streams proxied
+    bodies instead of buffering them, treats a 429 as the WebDAV auth lockout
+    rather than as load, and answers `503` plus `Retry-After` when the backend
+    itself is the problem.
 
 ## Not ported
 

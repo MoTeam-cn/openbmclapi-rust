@@ -9,6 +9,7 @@ mod factory;
 mod file;
 pub mod oss;
 mod path;
+mod resilience;
 pub mod s3;
 pub(crate) mod shared;
 pub mod webdav;
