@@ -52,6 +52,7 @@ const TEMPLATE: &str = r#"# openbmclapi agent configuration.
 
 # Sync tuning.
 # sync_memory_budget: 256   # MiB of download bodies buffered at once
+# speedtest_sizes: [1, 2, 4, 8, 16, 32, 64, 128]   # MiB probes seeded into the backend; [] disables
 
 # Logging.
 # log_level: "info"

@@ -23,6 +23,7 @@ fn prepare() -> MutexGuard<'static, ()> {
         "CLUSTER_STORAGE_OPTIONS",
         "CLUSTER_BMCLAPI",
         "LOGLEVEL",
+        "SPEEDTEST_SIZES",
     ] {
         std::env::remove_var(key);
     }
@@ -153,6 +154,29 @@ fn an_empty_sources_list_is_rejected() {
     assert!(
         error.to_string().contains("at least one source"),
         "unexpected error: {error}"
+    );
+    remove(&path);
+}
+
+#[test]
+fn a_speed_test_list_can_be_a_sequence_or_a_string() {
+    let _guard = prepare();
+
+    let path = write_config("speedtest-seq", "speedtest_sizes: [1, 4, 16]\n");
+    let config = load(Some(&path)).expect("load a sequence");
+    assert_eq!(config.speedtest_sizes, vec![1, 4, 16]);
+    remove(&path);
+
+    let path = write_config("speedtest-str", "speedtest_sizes: \"2, 8\"\n");
+    let config = load(Some(&path)).expect("load a string");
+    assert_eq!(config.speedtest_sizes, vec![2, 8]);
+    remove(&path);
+
+    let path = write_config("speedtest-empty", "speedtest_sizes: []\n");
+    let config = load(Some(&path)).expect("load an empty list");
+    assert!(
+        config.speedtest_sizes.is_empty(),
+        "an empty list disables seeding"
     );
     remove(&path);
 }

@@ -110,6 +110,15 @@ These are intentional and each one is a deliberate choice, not an oversight.
     fit and warns once the filesystem drops below 5% free, instead of filling
     the disk and failing in less legible ways.
 
+20. **Bandwidth probes live in the backend.** Node generated the `/measure`
+    payload in process, so the probe never touched the storage backend and
+    measured little more than the agent's own loopback. This port seeds one
+    object per configured size under a reserved `speedtest/` folder and serves
+    the probe from there, which exercises the real backend-to-client path. The
+    payload is an incompressible xorshift stream rather than a repeating
+    pattern, so a compressing backend or CDN cannot flatter the measurement,
+    and every backend's GC skips the reserved folder.
+
 ## Not ported
 
 * `pkg`-based single-binary packaging (`package.json#pkg`) — `cargo build`

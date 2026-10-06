@@ -90,6 +90,14 @@ pub async fn run(config: Config) -> Result<()> {
         return Err(Error::storage("storage check failed"));
     }
 
+    // Seed the bandwidth probes now that the backend is known writable.
+    if !cluster.config.speedtest_sizes.is_empty() {
+        let written =
+            crate::storage::speedtest::ensure(&*cluster.storage, &cluster.config.speedtest_sizes)
+                .await?;
+        info!(written, "seeded speed-test objects");
+    }
+
     let configuration = cluster.get_configuration().await?;
     let files = cluster.get_file_list(None).await?;
     info!(files = files.files.len(), "file list fetched");

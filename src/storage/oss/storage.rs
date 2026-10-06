@@ -175,6 +175,13 @@ impl Storage for OssStorage {
         let wanted: HashSet<String> = files.iter().map(|file| file.hash.clone()).collect();
         let mut counter = GcCounter::default();
         for object in self.list_all().await? {
+            // The reserved probe folder is not part of the master's list.
+            if crate::storage::speedtest::is_reserved(strip_prefix_key(
+                &object.key,
+                &self.config.prefix,
+            )) {
+                continue;
+            }
             let hash = basename(&object.key);
             if wanted.contains(hash) {
                 continue;

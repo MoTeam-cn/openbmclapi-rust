@@ -7,11 +7,13 @@ use axum::body::Body;
 use axum::extract::{Path, RawQuery, State};
 use axum::http::{header, StatusCode};
 use axum::response::{IntoResponse, Response};
+use tracing::debug;
 
 use crate::cluster::Cluster;
+use crate::storage::speedtest;
 use crate::util::check_sign;
 
-/// Megabyte payload template (`0066ccff` repeated).
+/// Megabyte payload template (`0066ccff` repeated), matching the Node agent.
 fn template() -> Vec<u8> {
     let mut buffer = Vec::with_capacity(1024 * 1024);
     for _ in 0..(1024 * 1024 / 4) {
@@ -21,6 +23,11 @@ fn template() -> Vec<u8> {
 }
 
 /// Stream `size` megabytes back to the caller.
+///
+/// A probe stored in the backend is preferred: it travels the real path from
+/// the backend to the client, which is what the master is trying to measure.
+/// Sizes without a stored object fall back to generating one in process, so
+/// the endpoint never regresses to an error.
 pub async fn measure(
     State(cluster): State<Arc<Cluster>>,
     Path(size): Path<String>,
@@ -46,6 +53,17 @@ pub async fn measure(
     };
     if count > 200 {
         return StatusCode::BAD_REQUEST.into_response();
+    }
+
+    if cluster.config.speedtest_sizes.contains(&(count as u64)) {
+        match speedtest::serve(&*cluster.storage, count as u64).await {
+            Ok(Some((response, stat))) => {
+                cluster.record_served(stat).await;
+                return response;
+            }
+            Ok(None) => debug!(size = count, "no stored probe, generating one"),
+            Err(e) => debug!(size = count, error = %e, "stored probe failed, generating one"),
+        }
     }
 
     let chunk = template();

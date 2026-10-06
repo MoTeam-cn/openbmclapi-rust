@@ -16,6 +16,10 @@ pub const DEFAULT_BMCLAPI_BASE: &str = "https://openbmclapi.bangbang93.com";
 pub const DEFAULT_PORT: u16 = 4000;
 /// Default cap on the download bytes buffered during one sync pass, in MiB.
 pub const DEFAULT_SYNC_MEMORY_MIB: u64 = 256;
+/// Sizes, in MiB, of the speed-test objects seeded into the storage backend.
+pub const DEFAULT_SPEEDTEST_SIZES: &[u64] = &[1, 2, 4, 8, 16, 32, 64, 128];
+/// Largest probe the measure route accepts, in MiB.
+pub const MAX_SPEEDTEST_MIB: u64 = 200;
 
 /// Runtime description advertised to the master.
 #[derive(Debug, Clone, Serialize)]
@@ -66,6 +70,8 @@ pub struct Config {
     pub plain_log: bool,
     /// MiB of download bodies that may be buffered at once during a sync.
     pub sync_memory_budget: u64,
+    /// MiB sizes of the probes seeded into the storage backend; empty disables.
+    pub speedtest_sizes: Vec<u64>,
     pub flavor: Flavor,
 }
 
@@ -78,6 +84,33 @@ fn var(name: &str) -> Option<String> {
 
 fn bool_var(name: &str) -> bool {
     var(name).map(|v| parse_bool(&v)).unwrap_or(false)
+}
+
+/// Parse a comma-separated list of MiB sizes.
+///
+/// An empty string disables the stored probes. A zero, out-of-range or
+/// unparsable entry is an error: silently dropping it would leave a size that
+/// the route advertises as available permanently unserved.
+pub(super) fn parse_size_list(raw: &str) -> Result<Vec<u64>> {
+    let mut sizes = Vec::new();
+    for part in raw.split(',') {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+        let size: u64 = part
+            .parse()
+            .map_err(|e| Error::Config(format!("invalid speed-test size {part:?}: {e}")))?;
+        if size == 0 || size > MAX_SPEEDTEST_MIB {
+            return Err(Error::Config(format!(
+                "speed-test size {size} is outside 1..={MAX_SPEEDTEST_MIB}"
+            )));
+        }
+        if !sizes.contains(&size) {
+            sizes.push(size);
+        }
+    }
+    Ok(sizes)
 }
 
 fn num_var(name: &str) -> Option<u64> {
@@ -146,6 +179,12 @@ impl Config {
             log_level: var("LOGLEVEL").unwrap_or_else(|| "info".to_string()),
             plain_log: bool_var("PLAIN_LOG"),
             sync_memory_budget: num_var("SYNC_MEMORY_BUDGET").unwrap_or(DEFAULT_SYNC_MEMORY_MIB),
+            // Read this one directly: `var` treats an empty value as unset,
+            // and an explicitly empty list is how seeding is turned off.
+            speedtest_sizes: match env::var("SPEEDTEST_SIZES") {
+                Ok(raw) => parse_size_list(&raw)?,
+                Err(_) => DEFAULT_SPEEDTEST_SIZES.to_vec(),
+            },
             flavor,
         })
     }

@@ -1,6 +1,6 @@
 use serde_json::Value;
 
-use super::{Config, DEFAULT_BMCLAPI_BASE, DEFAULT_PORT, ENV_LOCK};
+use super::{Config, DEFAULT_BMCLAPI_BASE, DEFAULT_PORT, DEFAULT_SPEEDTEST_SIZES, ENV_LOCK};
 
 /// Serialise the tests and give them a known environment.
 fn prepare() -> std::sync::MutexGuard<'static, ()> {
@@ -17,6 +17,8 @@ fn prepare() -> std::sync::MutexGuard<'static, ()> {
         "CLUSTER_BMCLAPI",
         "CLUSTER_IP",
         "LOGLEVEL",
+        "SYNC_MEMORY_BUDGET",
+        "SPEEDTEST_SIZES",
     ] {
         std::env::remove_var(key);
     }
@@ -60,4 +62,36 @@ fn explicit_variables_replace_the_defaults() {
             .and_then(Value::as_str),
         Some("https://dav")
     );
+}
+
+#[test]
+fn the_speed_test_ladder_has_a_default_and_can_be_disabled() {
+    let _guard = prepare();
+    std::env::remove_var("SPEEDTEST_SIZES");
+    let config = Config::from_env().expect("environment configuration");
+    assert_eq!(config.speedtest_sizes, DEFAULT_SPEEDTEST_SIZES.to_vec());
+
+    std::env::set_var("SPEEDTEST_SIZES", "");
+    let config = Config::from_env().expect("environment configuration");
+    assert!(
+        config.speedtest_sizes.is_empty(),
+        "an empty list disables seeding"
+    );
+}
+
+#[test]
+fn a_speed_test_size_list_is_parsed_and_deduplicated() {
+    let _guard = prepare();
+    std::env::set_var("SPEEDTEST_SIZES", " 4 , 1,4, 16 ");
+    let config = Config::from_env().expect("environment configuration");
+    assert_eq!(config.speedtest_sizes, vec![4, 1, 16]);
+}
+
+#[test]
+fn an_unusable_speed_test_size_is_rejected() {
+    let _guard = prepare();
+    for raw in ["0", "201", "abc"] {
+        std::env::set_var("SPEEDTEST_SIZES", raw);
+        assert!(Config::from_env().is_err(), "{raw:?} must not be accepted");
+    }
 }

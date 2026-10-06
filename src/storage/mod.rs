@@ -13,6 +13,7 @@ mod path;
 mod resilience;
 pub mod s3;
 pub(crate) mod shared;
+pub(crate) mod speedtest;
 pub mod webdav;
 
 pub use backend::{ServeRequest, ServeStat, Storage};

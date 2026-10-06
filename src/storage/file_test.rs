@@ -81,6 +81,28 @@ async fn a_staging_file_is_not_an_object() {
 }
 
 #[tokio::test]
+async fn gc_spares_the_reserved_speed_test_folder() {
+    let dir = scratch();
+    let storage = FileStorage::new(dir.clone());
+    let shard = dir.join("ab");
+    let probes = dir.join("speedtest");
+    std::fs::create_dir_all(&shard).expect("the shard directory");
+    std::fs::create_dir_all(&probes).expect("the probe directory");
+
+    let orphan = shard.join(HASH);
+    let probe = probes.join("1m");
+    std::fs::write(&orphan, b"gone").expect("seed an orphan");
+    std::fs::write(&probe, b"probe").expect("seed a probe");
+
+    let counter: GcCounter = storage.gc(&[]).await.expect("gc works");
+
+    assert_eq!(counter.count, 1, "only the orphan is collected");
+    assert!(!orphan.exists(), "the orphan is gone");
+    assert!(probe.exists(), "a reserved probe must survive collection");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
 async fn gc_removes_orphans_but_spares_a_write_in_flight() {
     let dir = scratch();
     let storage = FileStorage::new(dir.clone());

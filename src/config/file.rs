@@ -78,6 +78,7 @@ fn apply(config: &mut Config, root: &Map<String, Value>) -> Result<()> {
             "log_level" => config.log_level = string(key, value)?,
             "plain_log" => config.plain_log = boolean(key, value)?,
             "sync_memory_budget" => config.sync_memory_budget = positive(key, value)?,
+            "speedtest_sizes" => config.speedtest_sizes = size_list(key, value)?,
             "storage" => apply_storage(config, value)?,
             other => {
                 return Err(Error::Config(format!(
@@ -193,6 +194,27 @@ fn boolean(key: &str, value: &Value) -> Result<bool> {
         Value::Number(number) if number.as_u64() == Some(1) => Ok(true),
         other => Err(type_error(key, "a boolean", other)),
     }
+}
+
+/// MiB sizes, written either as a sequence or as a comma-separated string.
+fn size_list(key: &str, value: &Value) -> Result<Vec<u64>> {
+    let raw = match value {
+        Value::Array(items) => {
+            let mut parts = Vec::with_capacity(items.len());
+            for item in items {
+                match item {
+                    Value::Number(number) => parts.push(number.to_string()),
+                    Value::String(text) => parts.push(text.clone()),
+                    other => return Err(type_error(key, "a list of sizes", other)),
+                }
+            }
+            parts.join(",")
+        }
+        Value::String(text) => text.clone(),
+        Value::Number(number) => number.to_string(),
+        other => return Err(type_error(key, "a list of sizes", other)),
+    };
+    super::env::parse_size_list(&raw)
 }
 
 fn positive(key: &str, value: &Value) -> Result<u64> {

@@ -117,6 +117,7 @@ storage:
 | `NO_DAEMON` | `false` | 单进程运行，不拉起受监管 worker。 |
 | `NO_FAST_ENABLE` | `false` | 要求主控跳过快速启用流程。 |
 | `SYNC_MEMORY_BUDGET` | `256` | 同步时允许同时缓冲的下载字节数（MiB）。 |
+| `SPEEDTEST_SIZES` | `1,2,4,8,16,32,64,128` | 预置到存储后端的测速对象大小（MiB），逗号分隔；留空则关闭预置。 |
 | `LOGLEVEL` | `info` | `trace` / `debug` / `info` / `warn` / `error`。 |
 | `PLAIN_LOG` | `false` | 关闭 ANSI 颜色。 |
 | `LOG_FORMAT` | `pretty` | `json` 时每行输出一个 JSON 对象，供采集器使用。 |
@@ -211,6 +212,19 @@ alist / OpenList 被打满时会连带把 agent 拖死（Node 版就崩在这里
 而不是继续压。连接池也已调优（`pool_max_idle_per_host` 从 reqwest 默认的无上限降到 16，
 并设置空闲回收、TCP keepalive 与 `read_timeout`，避免长下载被总超时切断）。
 
+### 测速对象
+
+`/measure/{size}` 原本在进程内生成数据，那样只测到节点自己的环回，测不到存储后端。
+节点启动时会把 `SPEEDTEST_SIZES` 列出的对象**预置进存储后端**，放在存储根目录下保留的
+`speedtest/` 文件夹里，对象名就是大小（例如 `speedtest/1m`、`speedtest/128m`）。
+
+- 内容是按大小播种的 xorshift 流，**不可压缩**——重复图案会被 gzip 抹掉，
+  测出来的吞吐和真实搬数据的速度没有关系。
+- 该文件夹是保留区：五个后端的 GC 都会跳过它，不会被当垃圾清掉。
+- 探测请求因此走完整路径：webdav / alist / S3 / OSS 直接返回后端直链，
+  客户端从后端拉；`file` 后端则流式透传。这才是「用外部节点测存储」的意义。
+- 没预置的大小仍然回退到进程内生成，行为不会退化成报错。
+
 ### 同步与本地缓存
 
 - **字节预算**：同步时按文件大小分配内存额度，默认 256 MiB（`SYNC_MEMORY_BUDGET`）。
@@ -226,7 +240,7 @@ alist / OpenList 被打满时会连带把 agent 拖死（Node 版就崩在这里
 | 路由 | 用途 |
 | --- | --- |
 | `GET /download/{hash}` | 返回已缓存的对象。除设了 `DISABLE_SIGN` 外必须带合法 `s`/`e` 签名。未命中时回源主控拉取，并对并发请求去重、校验和。 |
-| `GET /measure/{size}` | 带宽探针，流式返回 `size` MiB（上限 200）的 `0066ccff`。 |
+| `GET /measure/{size}` | 带宽探针。该大小已预置到存储后端时从后端取（见上节），否则在进程内生成 `0066ccff` 流。上限 200 MiB。 |
 | `GET /auth` | nginx `auth_request` 的校验端点，校验 `x-original-uri` 的签名，通过回 204、否则 403。nginx 自己算不了 HMAC，靠它决定放行。该 location 是 `internal`，只被 nginx 内部调用。 |
 
 监听端在 TLS（ALPN）下同时说 HTTP/2 与 HTTP/1.1，非 TLS 下为 HTTP/1.1，由 hyper 的
@@ -255,6 +269,7 @@ src/
   storage/       file、minio（S3 SigV4）、oss（阿里云 V1）、webdav、alist
                  multi.rs     多源池：读轮转、写复制、源间故障转移
                  resilience/  熔断、自适应并发、有界重试
+                 speedtest.rs 预置在后端的测速对象（保留文件夹，GC 豁免）
                  shared/      两套云后端共用的 XML 与对象键辅助
   upnp/          SSDP 发现 + SOAP 端口映射
   nginx.rs       可选的 nginx 前置

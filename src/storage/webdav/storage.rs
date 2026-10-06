@@ -143,6 +143,10 @@ impl Storage for WebdavStorage {
             trace!(dir = %dir, checked, "scanning webdav directory");
             for entry in entries {
                 if entry.is_dir {
+                    // The reserved probe folder is not part of the master's list.
+                    if entry.name == crate::storage::speedtest::DIR {
+                        continue;
+                    }
                     queue.push(entry.href.clone());
                     continue;
                 }

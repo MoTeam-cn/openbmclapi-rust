@@ -129,6 +129,10 @@ impl Storage for FileStorage {
                     .strip_prefix(&self.cache_dir)
                     .map(|rel| rel.to_string_lossy().replace('\\', "/"))
                     .unwrap_or_default();
+                // The reserved probe folder is not part of the master's list.
+                if crate::storage::speedtest::is_reserved(&key) {
+                    continue;
+                }
                 // A staging file belongs to a write that is still in flight;
                 // collecting it would make that write fail.
                 if key.ends_with(STAGING_SUFFIX) {
