@@ -67,20 +67,25 @@ jobs:
           - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
             label: linux-x86_64-musl-static
+            archive: tar.gz
             musl: true
           # Linux, smaller but needs a glibc at least as new as the runner's.
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             label: linux-x86_64-gnu-dynamic
+            archive: tar.gz
           - target: x86_64-pc-windows-msvc
             os: windows-latest
             label: windows-x86_64
+            archive: zip
           - target: x86_64-apple-darwin
             os: macos-15-intel
             label: macos-x86_64
+            archive: tar.gz
           - target: aarch64-apple-darwin
             os: macos-latest
             label: macos-aarch64
+            archive: tar.gz
     steps:
       - uses: actions/checkout@v7
 
@@ -139,12 +144,24 @@ jobs:
           cp "$bin" "dist/$name/"
           cp README.md LICENSE NOTICE "dist/$name/"
           cd dist
-          tar -czf "$name.tar.gz" "$name"
+          # Windows gets a zip, which is what the platform expects; the other two
+          # get a tarball, which they both ship.
+          if [ "${{ matrix.archive }}" = "zip" ]; then
+            archive="$name.zip"
+            if command -v 7z >/dev/null 2>&1; then
+              7z a -tzip "$archive" "$name" >/dev/null
+            else
+              powershell -NoProfile -Command "Compress-Archive -Path '$name' -DestinationPath '$archive' -Force"
+            fi
+          else
+            archive="$name.tar.gz"
+            tar -czf "$archive" "$name"
+          fi
           # macOS ships shasum, not sha256sum.
           if command -v sha256sum >/dev/null 2>&1; then
-            sha256sum "$name.tar.gz" > "$name.tar.gz.sha256"
+            sha256sum "$archive" > "$archive.sha256"
           else
-            shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256"
+            shasum -a 256 "$archive" > "$archive.sha256"
           fi
           ls -lh
 
@@ -154,6 +171,7 @@ jobs:
           name: ${{ matrix.label }}
           path: |
             dist/*.tar.gz
+            dist/*.zip
             dist/*.sha256
 
   release:
@@ -189,7 +207,9 @@ jobs:
           linux-x86_64-gnu-dynamic：动态链接，需要 glibc
           windows-x86_64 / macos-x86_64 / macos-aarch64
 
-          解压后 ./openbmclapi init 生成配置，再 ./openbmclapi 启动。
+          Windows 是 .zip，其余是 .tar.gz。
+
+          解压后先 init 生成配置，再启动。
 
           改动：
           NOTES
@@ -203,9 +223,9 @@ jobs:
           set -euo pipefail
           tag="${GITHUB_REF_NAME}"
           if gh release view "$tag" >/dev/null 2>&1; then
-            gh release upload "$tag" dist/*.tar.gz dist/*.sha256 --clobber
+            gh release upload "$tag" dist/*.tar.gz dist/*.zip dist/*.sha256 --clobber
             gh release edit "$tag" --notes-file notes.md
           else
             gh release create "$tag" --title "$tag" --notes-file notes.md \
-              dist/*.tar.gz dist/*.sha256
+              dist/*.tar.gz dist/*.zip dist/*.sha256
           fi
