@@ -38,7 +38,21 @@
   用 `rustfmt --edition 2021 <文件...>` 限定范围。
 - 子 agent 不得新增依赖、不得改 `Cargo.toml`。
 
-### 0.4 判定标准
+### 0.4 工具链版本
+
+`rust-toolchain.toml` 把工具链钉死在 `1.94.1`，CI 与 release 都按它自行安装，
+不依赖 runner 上碰巧存在的 rustc。本机 `stable` 当前就是 1.94.1，但名字不叫
+`1.94.1`，rustup 会因此去下载一个独立工具链；离线或受限环境下用环境变量覆盖：
+
+```powershell
+$env:RUSTUP_TOOLCHAIN = "stable"
+```
+
+**不要**依赖 `stable` 这个名字做门禁：本机 stable 停在 1.94.1，GitHub runner 的
+stable 已经到 1.99.0，clippy 会多出新 lint，本地全绿而 CI 红。升级本机 stable 后
+要同步改 `rust-toolchain.toml`。
+
+### 0.5 判定标准
 
 `cargo fmt --check`、`cargo clippy`、`cargo test` 三项必须全绿。本项目要求
 **clippy 零警告**；某条 lint 确实不适用时就地 `#[allow(...)]` 并写明理由，不允许留着警告交付。

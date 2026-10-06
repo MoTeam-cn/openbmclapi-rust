@@ -48,7 +48,7 @@ impl Cluster {
         );
 
         let progress = Progress::new(total as u64, !self.config.plain_log);
-        let results = futures::stream::iter(missing.into_iter())
+        let results = futures::stream::iter(missing)
             .map(|file| {
                 let done = Arc::clone(&done);
                 let has_error = Arc::clone(&has_error);

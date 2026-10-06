@@ -15,10 +15,17 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
+      # The toolchain comes from rust-toolchain.toml, never from the runner:
+      # whatever stable happens to be preinstalled is not what we gate on.
+      - name: Install the pinned toolchain
+        run: |
+          set -euo pipefail
+          channel="$(awk -F'"' '/^channel/ {print $2; exit}' rust-toolchain.toml)"
+          rustup set profile minimal
+          rustup toolchain install "$channel" --component clippy --component rustfmt
+          rustup default "$channel"
+          rustc --version
+          cargo --version
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2

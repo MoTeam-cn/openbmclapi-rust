@@ -1,0 +1,7 @@
+# Pinned so that a local run and CI run the same rustc and the same clippy.
+# A newer stable can add lints a green local run never saw, and the build then
+# fails only in CI.
+[toolchain]
+channel = "1.94.1"
+components = ["clippy", "rustfmt"]
+profile = "minimal"

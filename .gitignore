@@ -35,3 +35,6 @@ rustc-ice-*.txt
 
 # Local environment overrides
 .env
+
+# release packaging
+/dist/

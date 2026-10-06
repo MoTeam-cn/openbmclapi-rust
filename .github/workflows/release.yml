@@ -1,0 +1,104 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: ${{ matrix.linkage }} ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Self-contained: nothing beyond the kernel at run time.
+          - target: x86_64-unknown-linux-musl
+            linkage: static
+          # Smaller, but needs a glibc at least as new as the runner's.
+          - target: x86_64-unknown-linux-gnu
+            linkage: dynamic
+    steps:
+      - uses: actions/checkout@v7
+
+      # Provision the toolchain from rust-toolchain.toml; the runner's own rustc
+      # is never used.
+      - name: Install the pinned toolchain
+        run: |
+          set -euo pipefail
+          channel="$(awk -F'"' '/^channel/ {print $2; exit}' rust-toolchain.toml)"
+          rustup set profile minimal
+          rustup toolchain install "$channel"
+          rustup default "$channel"
+          rustup target add "${{ matrix.target }}"
+          rustc --version
+          cargo --version
+
+      # zstd-sys is the only C dependency, and the musl target needs its own
+      # compiler rather than the host's.
+      - name: Install the C toolchain
+        if: matrix.linkage == 'static'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends musl-tools
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Package
+        run: |
+          set -euo pipefail
+          version="$(awk -F'"' '/^version/ {print $2; exit}' Cargo.toml)"
+          name="openbmclapi-${version}-${{ matrix.target }}-${{ matrix.linkage }}"
+          mkdir -p "dist/$name"
+          cp "target/${{ matrix.target }}/release/openbmclapi" "dist/$name/"
+          cp README.md LICENSE NOTICE "dist/$name/"
+          cd dist
+          tar -czf "$name.tar.gz" "$name"
+          sha256sum "$name.tar.gz" > "$name.tar.gz.sha256"
+          ls -lh
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}-${{ matrix.linkage }}
+          path: |
+            dist/*.tar.gz
+            dist/*.sha256
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="$(awk -F'"' '/^version/ {print $2; exit}' Cargo.toml)"
+          tag="v${version}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" dist/*.tar.gz dist/*.sha256 --clobber
+          else
+            gh release create "$tag" --title "$tag" --generate-notes dist/*.tar.gz dist/*.sha256
+          fi
