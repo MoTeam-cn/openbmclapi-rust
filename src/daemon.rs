@@ -8,6 +8,7 @@ use tokio::process::Command;
 use tracing::{error, info, warn};
 
 use crate::bootstrap::{self, READY_MARKER};
+use crate::cli::{self, Cli, Command as CliCommand};
 use crate::config::Config;
 use crate::logger;
 
@@ -20,15 +21,34 @@ const BACKOFF_JITTER: f64 = 0.2;
 
 /// Load configuration and either run a worker or supervise one.
 pub fn entry() -> ExitCode {
+    let args = Cli::parse_args();
+    if let Some(CliCommand::Init { force }) = &args.command {
+        return match cli::write_config(&args.init_target(), *force) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("cannot write the configuration: {e}");
+                ExitCode::FAILURE
+            }
+        };
+    }
+
     let _ = dotenvy::dotenv();
-    let config = match Config::from_env() {
+    let config_path = match args.config_path() {
+        Ok(path) => path,
+        Err(e) => {
+            eprintln!("configuration error: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let config = match Config::load(config_path) {
         Ok(config) => config,
         Err(e) => {
             eprintln!("configuration error: {e}");
             return ExitCode::FAILURE;
         }
     };
-    logger::init(&config.log_level, config.plain_log);
+    let format = logger::LogFormat::parse(std::env::var("LOG_FORMAT").ok().as_deref());
+    logger::init(&config.log_level, config.plain_log, format);
 
     let runtime = match tokio::runtime::Builder::new_multi_thread()
         .enable_all()

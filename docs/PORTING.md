@@ -77,13 +77,29 @@ These are intentional and each one is a deliberate choice, not an oversight.
     bodies instead of buffering them, treats a 429 as the WebDAV auth lockout
     rather than as load, and answers `503` plus `Retry-After` when the backend
     itself is the problem.
+13. **A YAML configuration file.** Node read the environment only. This port
+    layers `config.yaml` (or `--config FILE`) over the environment, so a file
+    alone can configure an agent, and adds `openbmclapi init` to write a
+    commented skeleton. The YAML reader is hand-written: the offline registry
+    carries no YAML crate, and the project already hand-writes Avro, SigV4 and
+    the engine.io client. It emits `serde_json::Value`, so every existing
+    option lookup is untouched.
+14. **Multi-source storage pools.** A `sources` list builds a pool that
+    round-robins downloads across the sources, falls through to the next one
+    when a source fails, replicates writes to every source, treats an object as
+    present only when all sources have it, unions the missing-file reports and
+    sums the GC counters. The local `file` backend is rejected inside a pool
+    because it is the agent's cache rather than a remote mirror.
+15. **Structured logs.** `LOG_FORMAT=json` emits one JSON object per line for a
+    log collector; `PLAIN_LOG` still controls ANSI output and `RUST_LOG`
+    overrides `LOGLEVEL` for per-module filtering.
 
 ## Not ported
 
 * `pkg`-based single-binary packaging (`package.json#pkg`) — `cargo build`
   already produces a self-contained executable.
-* pino's pretty transport. `PLAIN_LOG` controls ANSI output; use
-  `LOGLEVEL=debug` plus an external collector for structured logs.
+* pino's pretty transport. Logging goes through `tracing`; use
+  `LOG_FORMAT=json` for a collector and `PLAIN_LOG` to control ANSI output.
 * The Node agent's `.gitlab-ci.yml`, ESLint/Prettier/husky tooling and
   `docker-compose` files. A GitHub Actions workflow replaces the lint/test
   pipeline.

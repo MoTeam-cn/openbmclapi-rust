@@ -36,6 +36,66 @@ export CLUSTER_SECRET=你的集群密钥
 
 工作目录下的 `.env` 会被自动加载。
 
+### 命令行
+
+```bash
+openbmclapi                 # 运行节点（默认动作）
+openbmclapi run             # 同上，显式写法
+openbmclapi init            # 生成带注释的 config.yaml
+openbmclapi init --force    # 覆盖已存在的文件
+openbmclapi --config /etc/openbmclapi.yaml    # 指定配置文件
+openbmclapi --help          # 全部参数
+```
+
+### 配置文件
+
+除环境变量外，也可以用工作目录下的 `config.yaml` 配置，键名与环境变量一一对应：
+
+```yaml
+cluster_id: "your-cluster-id"
+cluster_secret: "your-cluster-secret"
+port: 4000
+log_level: "info"
+storage:
+  type: alist
+  options:
+    url: "https://alist.example.com"
+    username: "user"
+    password: "secret"
+```
+
+规则：
+
+- 配置文件里出现的键**覆盖**环境变量；文件不存在时行为与只有环境变量时完全一致。
+- 未知的顶层键直接报错，拼错的键不会静默忽略。
+- `--config` 指定的文件必须存在；默认的 `config.yaml` 则可有可无。
+
+YAML 读取器是手写的（离线环境里没有可用的 YAML crate，与手写 Avro / SigV4 / engine.io 同理）。
+支持注释、缩进映射、块序列、流式 `[a, b]` 与 `{a: 1}`、单双引号与转义、
+null / 布尔 / 整数 / 浮点。**不支持**锚点与别名（`&` `*`）、标签（`!`）、
+多行标量（`|` `>`）、文档分隔符（`---`）、merge key（`<<`）与重复键——
+这些会带行号报错，不会静默误解。
+
+### 多存储源
+
+`storage` 也可以写成一池远端源：节点按**轮转**把下载分散到各源，某个源失败时自动切到
+下一个；写入会复制到所有源，因此任何一份都能独立提供完整数据。
+
+```yaml
+storage:
+  sources:
+    - type: alist
+      options: { url: "https://alist-a.example.com", username: "u", password: "p" }
+    - type: webdav
+      options: { url: "https://dav-b.example.com", username: "u", password: "p" }
+```
+
+- `type` / `options`（单源）与 `sources`（多源）互斥，同时出现直接报错。
+- `sources` 至少一项，且**不允许出现 `file`**：本地磁盘是节点自己的缓存，
+  不是远端镜像，混进来会让「数据在哪」有两种互相矛盾的含义。
+- 多源下 `exists` 要求每个源都有该对象，`get_missing_files` 取各源缺失的并集，
+  `gc` 在每个源上分别执行后汇总计数——所以某个源写失败会在下一轮同步自动补上。
+
 ### 环境变量
 
 | 变量 | 默认值 | 说明 |
@@ -58,10 +118,12 @@ export CLUSTER_SECRET=你的集群密钥
 | `NO_FAST_ENABLE` | `false` | 要求主控跳过快速启用流程。 |
 | `LOGLEVEL` | `info` | `trace` / `debug` / `info` / `warn` / `error`。 |
 | `PLAIN_LOG` | `false` | 关闭 ANSI 颜色。 |
+| `LOG_FORMAT` | `pretty` | `json` 时每行输出一个 JSON 对象，供采集器使用。 |
+| `RUST_LOG` | – | 设了就覆盖 `LOGLEVEL`，可按模块细调（如 `openbmclapi::cluster=debug`）。 |
 
 ## 存储后端
 
-`CLUSTER_STORAGE` 目前支持 **5 个**后端：
+`CLUSTER_STORAGE` 目前支持 **5 个**后端（也可以按上节配成一池多源）：
 
 | 取值 | 后端 | 寻址 / 签名 | 说明 |
 | --- | --- | --- | --- |
@@ -69,7 +131,7 @@ export CLUSTER_SECRET=你的集群密钥
 | `minio` | MinIO 及一切 S3 兼容对象存储 | path-style + 自实现 AWS SigV4 | 不依赖 `minio` SDK，支持预签名直链。 |
 | `oss` | 阿里云 OSS | 自实现 Signature V1 | 不依赖 `ali-oss`，默认代理透传，可切直链重定向。 |
 | `webdav` | 通用 WebDAV | 原生 PROPFIND / MKCOL / PUT / DELETE | 不依赖 `webdav` 包。 |
-| `alist` | AList 的 WebDAV | 同上 + 签名直链缓存 | 缓存落盘到 `cache/redirectUrl.json`，启动时载入。 |
+| `alist` | AList / OpenList 的 WebDAV | 同上 + 签名直链缓存 | 缓存落盘到 `cache/redirectUrl.json`，启动时载入。 |
 
 ### 各后端的 `CLUSTER_STORAGE_OPTIONS`
 
@@ -142,6 +204,7 @@ alist / OpenList 被打满时会连带把 agent 拖死（Node 版就崩在这里
 | 熔断器 | 连续 5 次失败后断开 15 秒，期间立刻返回失败；冷却后放一个探针请求。429 会**立刻**断开——那是 WebDAV 认证锁定，重试只会延长它。 |
 | 有界重试 | 408/425/5xx 退避重试，最多 3 次，指数增长加抖动，上限 30 秒；带 `Retry-After` 时以它为准。 |
 | 流式代理 | 响应体用 `Body::from_stream` 直接转发，不再整包读进内存——大文件不再撑爆进程。 |
+| 源间故障转移 | 多源配置下，某个源失败（或 404）会自动换下一个源重试；全部失败才对外报错。 |
 
 上游不可用时 `/download/{hash}` 返回 **503** 并带 `Retry-After`，客户端应当退避重试，
 而不是继续压。连接池也已调优（`pool_max_idle_per_host` 从 reqwest 默认的无上限降到 16，
@@ -166,7 +229,8 @@ src/
   daemon.rs      守护进程：worker 重启与指数退避
   lib.rs         库根：只有模块声明与再导出
   bootstrap.rs   worker 启动流程：认证、证书、监听、端口检查、同步、启用
-  config.rs      环境变量配置
+  cli.rs         命令行：run / init
+  config/        配置：环境变量、YAML 文件、手写 YAML 读取器
   token.rs       HMAC 挑战/应答 + 后台令牌刷新
   client.rs      主控 HTTP 客户端（Bearer 认证、响应缓存）
   filelist.rs    手写 Avro 解码器，解析主控文件清单
@@ -176,7 +240,9 @@ src/
   server.rs      hyper auto（h1/h2）监听 + rustls 配置
   routes/        /auth、/download/{hash}、/measure/{size}
   storage/       file、minio（S3 SigV4）、oss（阿里云 V1）、webdav、alist
-                 shared/ 放两套云后端共用的 XML 与对象键辅助
+                 multi.rs     多源池：读轮转、写复制、源间故障转移
+                 resilience/  熔断、自适应并发、有界重试
+                 shared/      两套云后端共用的 XML 与对象键辅助
   upnp/          SSDP 发现 + SOAP 端口映射
   nginx.rs       可选的 nginx 前置
   tls.rs         rustls 用的 PEM 解析
@@ -212,7 +278,9 @@ cargo test --offline --test http_surface
 
 完整映射与每一处刻意偏离见 [docs/PORTING.md](docs/PORTING.md)。要点：
 
-- 向主控上报的 runtime 是 `Rust/<版本>`，而非 `Node.js/<版本>`。
+- 向主控上报的 runtime 是 `Rust/<版本>`，并额外带 `implementation` 与 `repo`，
+  主控可以据此区分本移植与 Node 版；keep-alive 上报体仍是 `time`/`hits`/`bytes`。
+- 配置支持 YAML 文件（`openbmclapi init` 生成）与多存储源，Node 版只有环境变量与单源。
 - 对象键在所有平台统一用 `/` 分隔，远端键跨平台完全一致（Node 版用宿主分隔符）。
 - nginx 反代到 loopback TCP 端口而非 unix socket，因此在 Windows 上也能用。
 - 阿里云 OSS 与 S3 直接实现（Signature V1 / SigV4），不经过厂商 SDK。

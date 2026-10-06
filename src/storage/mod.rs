@@ -7,6 +7,7 @@ mod alist;
 mod backend;
 mod factory;
 mod file;
+mod multi;
 pub mod oss;
 mod path;
 mod resilience;
@@ -16,4 +17,5 @@ pub mod webdav;
 
 pub use backend::{ServeRequest, ServeStat, Storage};
 pub use factory::create;
+pub use multi::MultiStorage;
 pub(crate) use path::join_key;

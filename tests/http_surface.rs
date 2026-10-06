@@ -46,6 +46,28 @@ fn signed_query(hash: &str) -> String {
     format!("s={}&e={}", sign(hash, SECRET, &expires), expires)
 }
 
+/// Send a request, retrying once when the transport itself fails.
+///
+/// Each run binds a fresh loopback port, and Windows can abort a pooled
+/// keep-alive connection with WSAECONNABORTED when the client writes to it at
+/// the wrong moment. These are idempotent GETs, so one retry makes the suite
+/// deterministic; a genuine server-side fault still fails both attempts.
+async fn send<F>(url: &str, build: F) -> reqwest::Response
+where
+    F: Fn() -> reqwest::RequestBuilder,
+{
+    for attempt in 1..=2 {
+        match build().send().await {
+            Ok(response) => return response,
+            Err(e) if attempt == 1 && (e.is_connect() || e.is_request() || e.is_timeout()) => {
+                eprintln!("transport error on {url}, retrying once: {e}");
+            }
+            Err(e) => panic!("GET {url} failed: {e}"),
+        }
+    }
+    unreachable!("the loop returns or panics")
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn download_measure_and_auth() {
     let workdir = std::env::temp_dir().join(format!("openbmclapi-it-{}", std::process::id()));
@@ -95,11 +117,8 @@ async fn download_measure_and_auth() {
         .unwrap();
 
     // 1. Valid signature serves the object with the bmclapi headers.
-    let response = client
-        .get(format!("{base}/download/{hash}?{}", signed_query(hash)))
-        .send()
-        .await
-        .expect("download");
+    let url = format!("{base}/download/{hash}?{}", signed_query(hash));
+    let response = send(&url, || client.get(&url)).await;
     assert_eq!(response.status(), 200, "signed download must succeed");
     assert_eq!(
         response.headers().get("x-bmclapi-hash").unwrap(),
@@ -114,30 +133,19 @@ async fn download_measure_and_auth() {
     assert_eq!(body.as_ref(), payload.as_slice());
 
     // 2. Invalid signature is rejected.
-    let response = client
-        .get(format!("{base}/download/{hash}?s=nope&e=zzz"))
-        .send()
-        .await
-        .unwrap();
+    let url = format!("{base}/download/{hash}?s=nope&e=zzz");
+    let response = send(&url, || client.get(&url)).await;
     assert_eq!(response.status(), 403, "bad sign must be rejected");
 
     // 3. Unknown but well-formed hash is a 404.
     let other = "0000000000000000000000000000000000000000";
-    let response = client
-        .get(format!("{base}/download/{other}?{}", signed_query(other)))
-        .send()
-        .await
-        .unwrap();
+    let url = format!("{base}/download/{other}?{}", signed_query(other));
+    let response = send(&url, || client.get(&url)).await;
     assert_eq!(response.status(), 404, "missing object must be a 404");
 
     // 4. The measure endpoint returns the requested megabyte count.
-    let path = "/measure/2";
-    let query = signed_query(path);
-    let response = client
-        .get(format!("{base}{path}?{query}"))
-        .send()
-        .await
-        .unwrap();
+    let url = format!("{base}/measure/2?{}", signed_query("/measure/2"));
+    let response = send(&url, || client.get(&url)).await;
     assert_eq!(response.status(), 200);
     assert_eq!(
         response.headers().get("content-length").unwrap(),
@@ -146,41 +154,28 @@ async fn download_measure_and_auth() {
     assert_eq!(response.bytes().await.unwrap().len(), 2 * 1024 * 1024);
 
     // 5. Oversized measure requests are refused.
-    let path = "/measure/500";
-    let response = client
-        .get(format!("{base}{path}?{}", signed_query(path)))
-        .send()
-        .await
-        .unwrap();
+    let url = format!("{base}/measure/500?{}", signed_query("/measure/500"));
+    let response = send(&url, || client.get(&url)).await;
     assert_eq!(response.status(), 400);
 
     // 6. The nginx auth endpoint validates x-original-uri.
     let expires = base36(now_ms() + 60_000);
     let signature = sign(hash, SECRET, &expires);
     let original = format!("/download/{hash}?s={signature}&e={expires}");
-    let response = client
-        .get(format!("{base}/auth"))
-        .header("x-original-uri", &original)
-        .send()
-        .await
-        .unwrap();
+    let url = format!("{base}/auth");
+    let response = send(&url, || {
+        client.get(&url).header("x-original-uri", &original)
+    })
+    .await;
     assert_eq!(response.status(), 204, "valid auth_request must be 204");
 
-    let response = client
-        .get(format!("{base}/auth"))
-        .header("x-original-uri", format!("/download/{hash}?s=bad&e=bad"))
-        .send()
-        .await
-        .unwrap();
+    let bad = format!("/download/{hash}?s=bad&e=bad");
+    let response = send(&url, || client.get(&url).header("x-original-uri", &bad)).await;
     assert_eq!(response.status(), 403, "invalid auth_request must be 403");
 
     // 7. Range requests are honoured.
-    let response = client
-        .get(format!("{base}/download/{hash}?{}", signed_query(hash)))
-        .header("range", "bytes=0-4")
-        .send()
-        .await
-        .unwrap();
+    let url = format!("{base}/download/{hash}?{}", signed_query(hash));
+    let response = send(&url, || client.get(&url).header("range", "bytes=0-4")).await;
     assert_eq!(response.status(), 206);
     assert_eq!(response.bytes().await.unwrap().as_ref(), b"hello");
 

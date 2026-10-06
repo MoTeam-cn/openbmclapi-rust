@@ -1,3 +1,8 @@
+//! Configuration from the process environment.
+//!
+//! Every field maps onto a CLUSTER_*-style variable of the Node
+//! implementation. This is the baseline layer; file overrides it.
+
 use std::env;
 
 use serde::Serialize;
@@ -21,9 +26,18 @@ pub struct Flavor {
     pub repo: String,
 }
 
+/// One backend in the storage configuration.
+#[derive(Debug, Clone, PartialEq)]
+pub struct StorageSource {
+    /// Backend name, e.g. "file", "alist" or "webdav".
+    pub kind: String,
+    /// Backend-specific options; null when the backend takes none.
+    pub options: serde_json::Value,
+}
+
 /// Agent configuration, read from the process environment.
 ///
-/// Field names mirror the `CLUSTER_*` environment variables of the Node
+/// Field names mirror the CLUSTER_* environment variables of the Node
 /// implementation.
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -39,6 +53,8 @@ pub struct Config {
     pub enable_upnp: bool,
     pub storage: String,
     pub storage_opts: Option<serde_json::Value>,
+    /// Every configured backend, in order; always at least one entry.
+    pub storage_sources: Vec<StorageSource>,
     pub ssl_key: Option<String>,
     pub ssl_cert: Option<String>,
     pub bmclapi_base: String,
@@ -89,6 +105,10 @@ impl Config {
             ),
             None => None,
         };
+        let storage_sources = vec![StorageSource {
+            kind: storage.clone(),
+            options: storage_opts.clone().unwrap_or(serde_json::Value::Null),
+        }];
         let flavor = Flavor {
             runtime: format!("Rust/{}", crate::VERSION),
             storage: storage.clone(),
@@ -108,6 +128,7 @@ impl Config {
             enable_upnp: bool_var("ENABLE_UPNP"),
             storage,
             storage_opts,
+            storage_sources,
             ssl_key: var("SSL_KEY"),
             ssl_cert: var("SSL_CERT"),
             bmclapi_base: var("CLUSTER_BMCLAPI")
@@ -132,3 +153,11 @@ impl Config {
         std::env::temp_dir().join("openbmclapi")
     }
 }
+
+/// Serialises tests that mutate the process environment, which is global.
+#[cfg(test)]
+pub(super) static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+#[cfg(test)]
+#[path = "env_test.rs"]
+mod tests;

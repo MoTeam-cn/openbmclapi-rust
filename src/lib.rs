@@ -4,6 +4,7 @@
 //! (https://github.com/bangbang93/openbmclapi) to Rust.
 
 pub mod bootstrap;
+pub mod cli;
 pub mod client;
 pub mod cluster;
 pub mod config;
