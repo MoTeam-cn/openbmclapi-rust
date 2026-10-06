@@ -30,8 +30,16 @@ pub struct WebdavStorage {
 impl WebdavStorage {
     /// Build from the JSON options: `url` plus optional `basePath`, `username`, `password`.
     pub fn new(opts: &Value) -> Result<Self> {
+        WebdavStorage::with_label("webdav", opts)
+    }
+
+    /// The same, reporting errors under `label`.
+    ///
+    /// AList is this backend with a different link resolver, so a missing option
+    /// there must not blame WebDAV.
+    pub fn with_label(label: &str, opts: &Value) -> Result<Self> {
         let url = string_field(opts, "url")
-            .ok_or_else(|| Error::Config("webdav: url is required".into()))?;
+            .ok_or_else(|| Error::Config(format!("{label}: url is required")))?;
         let base_path = string_field(opts, "basePath").unwrap_or_default();
         let client = WebdavClient::new(
             &url,

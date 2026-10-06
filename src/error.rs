@@ -58,4 +58,16 @@ impl Error {
     pub fn storage(msg: impl Into<String>) -> Self {
         Error::Storage(msg.into())
     }
+
+    /// Whether restarting the process could plausibly clear this.
+    ///
+    /// A configuration error is the same error on the next attempt, so the
+    /// supervisor must stop rather than loop behind a backoff.
+    pub fn is_fatal(&self) -> bool {
+        matches!(self, Error::Config(_))
+    }
 }
+
+#[cfg(test)]
+#[path = "error_test.rs"]
+mod tests;

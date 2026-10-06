@@ -15,6 +15,12 @@ use crate::logger;
 /// Environment variable marking a supervised child process.
 pub const WORKER_ENV: &str = "OPENBMCLAPI_WORKER";
 
+/// Exit code a worker uses for an error that restarting cannot fix.
+///
+/// The supervisor watches for it and stops: a bad configuration is the same bad
+/// configuration on the next attempt, and looping only buries the cause.
+pub const FATAL_EXIT_CODE: u8 = 2;
+
 const BACKOFF_FACTOR: f64 = 2.0;
 const BACKOFF_MAX: f64 = 60.0;
 const BACKOFF_JITTER: f64 = 0.2;
@@ -37,14 +43,14 @@ pub fn entry() -> ExitCode {
         Ok(path) => path,
         Err(e) => {
             eprintln!("configuration error: {e}");
-            return ExitCode::FAILURE;
+            return ExitCode::from(FATAL_EXIT_CODE);
         }
     };
     let config = match Config::load(config_path) {
         Ok(config) => config,
         Err(e) => {
             eprintln!("configuration error: {e}");
-            return ExitCode::FAILURE;
+            return ExitCode::from(FATAL_EXIT_CODE);
         }
     };
     let format = logger::LogFormat::parse(Some(&config.log_format));
@@ -71,7 +77,11 @@ pub fn entry() -> ExitCode {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
                 error!(error = %e, "bootstrap failed");
-                ExitCode::FAILURE
+                if e.is_fatal() {
+                    ExitCode::from(FATAL_EXIT_CODE)
+                } else {
+                    ExitCode::FAILURE
+                }
             }
         };
     }
@@ -152,6 +162,10 @@ async fn supervise() -> ExitCode {
                 return ExitCode::FAILURE;
             }
         };
+        if status.code() == Some(i32::from(FATAL_EXIT_CODE)) {
+            error!("the worker cannot start with this configuration, not restarting");
+            return ExitCode::FAILURE;
+        }
         let jitter = 1.0 + (rand::random::<f64>() - 0.5) * 2.0 * BACKOFF_JITTER;
         backoff = (backoff * BACKOFF_FACTOR).min(BACKOFF_MAX) * jitter;
         warn!(

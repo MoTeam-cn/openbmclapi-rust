@@ -143,6 +143,50 @@ fn the_log_format_can_come_from_the_file() {
 }
 
 #[test]
+fn a_single_source_reads_a_nested_options_block() {
+    let _guard = prepare();
+    let file = TempFile::write(
+        "config.yaml",
+        "storage:\n  type: alist\n  options:\n    url: \"http://127.0.0.1:5244/dav\"\n    basePath: \"Cache/download\"\n",
+    );
+    let config = load(Some(file.path())).expect("load");
+    assert_eq!(config.storage_sources.len(), 1);
+    assert_eq!(config.storage_sources[0].kind, "alist");
+    assert_eq!(
+        config.storage_sources[0]
+            .options
+            .get("url")
+            .and_then(|v| v.as_str()),
+        Some("http://127.0.0.1:5244/dav"),
+        "a block-style options mapping must survive parsing"
+    );
+    assert_eq!(
+        config.storage_sources[0]
+            .options
+            .get("basePath")
+            .and_then(|v| v.as_str()),
+        Some("Cache/download")
+    );
+}
+
+#[test]
+fn a_pooled_source_reads_a_nested_options_block() {
+    let _guard = prepare();
+    let file = TempFile::write(
+        "config.yaml",
+        "storage:\n  sources:\n    - type: webdav\n      options:\n        url: \"https://dav.example.com\"\n",
+    );
+    let config = load(Some(file.path())).expect("load");
+    assert_eq!(
+        config.storage_sources[0]
+            .options
+            .get("url")
+            .and_then(|v| v.as_str()),
+        Some("https://dav.example.com")
+    );
+}
+
+#[test]
 fn the_probe_switch_is_read_from_the_file() {
     let _guard = prepare();
     let file = TempFile::write("config.yaml", "measure_redirect: false\n");

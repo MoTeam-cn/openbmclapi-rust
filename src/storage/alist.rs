@@ -106,7 +106,7 @@ pub struct AlistStorage {
 
 impl AlistStorage {
     pub fn new(opts: &Value) -> Result<Self> {
-        let inner = WebdavStorage::new(opts)?;
+        let inner = WebdavStorage::with_label("alist", opts)?;
         let ttl = match opts.get("cacheTtl") {
             Some(Value::Number(n)) => Duration::from_millis(n.as_u64().unwrap_or(3_600_000)),
             Some(Value::String(s)) => parse_duration(s).unwrap_or(DEFAULT_TTL),
