@@ -96,7 +96,11 @@ jobs:
         run: |
           set -euo pipefail
           version="$(awk -F'"' '/^version/ {print $2; exit}' Cargo.toml)"
-          tag="v${version}"
+          tag="${GITHUB_REF_NAME}"
+          if [ "$tag" != "v${version}" ]; then
+            echo "tag $tag does not match the Cargo.toml version v${version}" >&2
+            exit 1
+          fi
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release upload "$tag" dist/*.tar.gz dist/*.sha256 --clobber
           else
