@@ -14,7 +14,7 @@ pub struct FileInfo {
 impl FileInfo {
     /// The basename of the remote path, used for `content-disposition`.
     pub fn basename(&self) -> &str {
-        self.path.rsplit('/').next().unwrap_or(&self.path)
+        crate::util::basename(&self.path)
     }
 }
 
@@ -41,6 +41,7 @@ pub struct Counters {
 /// `sync` section of the agent configuration.
 #[derive(Debug, Clone, Deserialize)]
 pub struct SyncConfig {
+    /// Present in the master payload; the agent ignores it.
     #[allow(dead_code)]
     pub source: String,
     pub concurrency: usize,

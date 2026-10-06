@@ -13,6 +13,7 @@ use tokio_util::io::ReaderStream;
 use tracing::{info, warn};
 
 use crate::error::{Error, Result};
+use crate::storage::shared::encode_filename;
 use crate::types::{FileInfo, GcCounter};
 use crate::util::{get_size, hash_to_filename};
 
@@ -26,10 +27,6 @@ pub struct FileStorage {
 impl FileStorage {
     pub fn new(cache_dir: PathBuf) -> Self {
         FileStorage { cache_dir }
-    }
-
-    pub fn cache_dir(&self) -> &std::path::Path {
-        &self.cache_dir
     }
 
     fn absolute(&self, key: &str) -> PathBuf {
@@ -224,11 +221,6 @@ fn parse_single_range(total: i64, header: &str) -> Option<(i64, i64)> {
         return None;
     }
     Some((start, end))
-}
-
-fn encode_filename(name: &str) -> String {
-    use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
-    utf8_percent_encode(name, NON_ALPHANUMERIC).to_string()
 }
 
 impl IntoResponse for FileStorage {

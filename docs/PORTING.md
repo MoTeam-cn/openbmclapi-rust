@@ -9,28 +9,29 @@ repository.
 
 | Node source | Rust module | Notes |
 | --- | --- | --- |
-| `src/index.ts` | `src/main.rs` | Worker supervision instead of `cluster.fork`; same backoff (factor 2, cap 60 s, ±20 % jitter, reset on ready). |
+| `src/index.ts` | `src/main.rs`, `src/daemon.rs` | Worker supervision instead of `cluster.fork`; same backoff (factor 2, cap 60 s, ±20 % jitter, reset on ready). |
 | `src/bootstrap.ts` | `src/bootstrap.rs` | Same ordering: token → connect → certificate → listen → port-check → storage check → sync → GC → enable. |
 | `src/config.ts` | `src/config.rs` | Same `CLUSTER_*` variables and defaults; `.env` still loaded. |
 | `src/token.ts` | `src/token.rs` | HMAC-SHA256 challenge/response; refresh at `max(ttl − 10 min, ttl/2)`. |
-| `src/cluster.ts` | `src/cluster.rs`, `src/client.rs`, `src/routes/*` | Split into orchestration, the master client and the route handlers. |
+| `src/cluster.ts` | `src/cluster/`, `src/client.rs`, `src/routes/` | Split into orchestration, the master client and the route handlers. |
 | `src/keepalive.ts` | `src/keepalive.rs` | 60 s reporting, 10 s ack timeout, restart after 3 failures. |
-| `src/upnp.ts` | `src/upnp.rs` | SSDP + SOAP instead of `@xmcl/nat-api`; 30 min renewal, 1 h lease. |
+| `src/upnp.ts` | `src/upnp/` | SSDP + SOAP instead of `@xmcl/nat-api`; 30 min renewal, 1 h lease. |
 | `src/util.ts` | `src/util.rs` | `hashToFilename`, `checkSign`, `getSize` including the range parser. |
 | `src/file.ts` | `cluster::validate_file` | MD5 for 32-char hashes, SHA-1 otherwise. |
 | `src/constants.ts` | `src/filelist.rs` | The avsc schema is replaced by a direct Avro binary decoder. |
 | `src/logger.ts` | `src/logger.rs` | `tracing` + `EnvFilter` instead of pino. |
 | `src/routes/auth.route.ts` | `src/routes/auth.rs` | |
 | `src/routes/measure.route.ts` | `src/routes/measure.rs` | |
-| `src/storage/base.storage.ts` | `src/storage/mod.rs` | `IStorage` → the `Storage` trait plus the factory. |
+| `src/storage/base.storage.ts` | `src/storage/backend.rs`, `src/storage/factory.rs` | `IStorage` → the `Storage` trait plus the factory. |
 | `src/storage/file.storage.ts` | `src/storage/file.rs` | Adds single-range `206` responses. |
-| `src/storage/minio.storage.ts` | `src/storage/s3.rs` | Hand-written SigV4 + presigning instead of the `minio` SDK. |
-| `src/storage/oss.storage.ts` | `src/storage/oss.rs` | Hand-written Aliyun OSS Signature V1 instead of `ali-oss`. |
-| `src/storage/webdav.storage.ts` | `src/storage/webdav.rs` | Raw PROPFIND/MKCOL/PUT/DELETE instead of the `webdav` package. |
+| `src/storage/minio.storage.ts` | `src/storage/s3/` | Hand-written SigV4 + presigning instead of the `minio` SDK. |
+| `src/storage/oss.storage.ts` | `src/storage/oss/` | Hand-written Aliyun OSS Signature V1 instead of `ali-oss`. |
+| `src/storage/webdav.storage.ts` | `src/storage/webdav/` | Raw PROPFIND/MKCOL/PUT/DELETE instead of the `webdav` package. |
 | `src/storage/alist-webdav.storage.ts` | `src/storage/alist.rs` | Same redirect cache, persisted to `cache/redirectUrl.json`. |
+| – | `src/storage/shared/` | XML tag/entity decoding and object-key percent-encoding shared by the S3 and OSS backends. |
 | `src/modules/got-hooks.ts` | – | Not needed: the master client checks status codes explicitly. |
 | `src/http2-express.d.ts` | – | Replaced by hyper's auto h1/h2 driver. |
-| socket.io-client | `src/socketio.rs` | Hand-written engine.io v4 / socket.io v4 client over websockets. |
+| socket.io-client | `src/socketio/` | Hand-written engine.io v4 / socket.io v4 client over websockets. |
 
 ## Behavioural deviations
 

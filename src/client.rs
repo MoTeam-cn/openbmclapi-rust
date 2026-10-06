@@ -31,6 +31,7 @@ pub struct Fetched {
 }
 
 impl Fetched {
+    /// Whether the master answered with a 2xx status.
     pub fn is_success(&self) -> bool {
         self.status.is_success()
     }
@@ -50,6 +51,7 @@ struct Inner {
 }
 
 impl BmclapiClient {
+    /// Build a client bound to the master endpoint from `config`.
     pub fn new(config: &Config, token: TokenManager) -> Result<Self> {
         let ua = format!("openbmclapi-cluster/{}", crate::VERSION);
         let http = reqwest::Client::builder()
@@ -76,10 +78,12 @@ impl BmclapiClient {
         })
     }
 
+    /// Base URL of the master, without a trailing slash.
     pub fn base(&self) -> &str {
         &self.inner.base
     }
 
+    /// Shared token manager, exposed so callers can force re-authentication.
     pub fn token_manager(&self) -> &TokenManager {
         &self.inner.token
     }

@@ -48,6 +48,7 @@ struct Inner {
 }
 
 impl TokenManager {
+    /// Create a manager for the given cluster credentials and master base URL.
     pub fn new(
         cluster_id: impl Into<String>,
         cluster_secret: impl Into<String>,

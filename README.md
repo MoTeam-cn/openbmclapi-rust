@@ -101,19 +101,21 @@ negotiated per connection by hyper's auto driver.
 
 ```
 src/
-  main.rs        process entry + daemon supervisor (worker restart/backoff)
+  main.rs        binary entry (delegates to daemon::entry)
+  daemon.rs      daemon supervisor: worker restart/backoff
   bootstrap.rs   worker startup: auth, certificate, listen, sync, enable
   config.rs      environment configuration
   token.rs       HMAC challenge/response + background token refresh
   client.rs      master HTTP client (bearer auth, response cache)
   filelist.rs    hand-rolled Avro decoder for the master file list
-  cluster.rs     registration, sync, download, GC, counters
+  cluster/       registration, sync, download, GC, counters
   keepalive.rs   one-minute reporting loop with restart-on-error
-  socketio.rs    engine.io v4 / socket.io v4 client over websockets
+  socketio/      engine.io v4 / socket.io v4 client over websockets
   server.rs      hyper auto (h1/h2) listener + rustls setup
   routes/        /auth, /download/{hash}, /measure/{size}
   storage/       file, minio (S3 SigV4), oss (Aliyun V1), webdav, alist
-  upnp.rs        SSDP discovery + SOAP port mapping
+                 shared/ holds the XML and key helpers both cloud backends use
+  upnp/          SSDP discovery + SOAP port mapping
   nginx.rs       optional nginx front-end
   tls.rs         PEM parsing for rustls
 ```
@@ -121,7 +123,8 @@ src/
 ## Tests
 
 ```bash
-cargo test
+cargo test --offline --lib
+cargo test --offline --test http_surface
 ```
 
 Unit tests cover the Avro decoder, signature verification, range arithmetic,
@@ -129,6 +132,20 @@ multistatus parsing, template rendering, duration parsing and both cloud
 signature implementations. `tests/http_surface.rs` boots the real router against
 the file backend and exercises signed downloads, bad signatures, 404s, ranges,
 the measure endpoint and the nginx auth endpoint.
+
+## Conventions
+
+This repository follows [CLAUDE.md](CLAUDE.md). The parts that bite:
+
+- No source file may exceed 350 lines; 301–350 needs a written justification.
+- `lib.rs` / `main.rs` / any `mod.rs` is an entry point only — module docs,
+  `mod` declarations and re-exports. Logic belongs in a sibling file.
+- Unit tests live in `<module>_test.rs` next to the module and are pulled in with
+  `#[cfg(test)] #[path = "<module>_test.rs"] mod tests;`. Cross-module tests live in `tests/`.
+- Reuse before writing: the same logic appearing twice must be extracted.
+- Verification is scoped, never `--all-targets`: `cargo check --offline --lib`,
+  `cargo clippy --offline --lib`, `cargo test --offline --lib <module>::`. The whole-crate
+  pass runs once, at collection time.
 
 ## Differences from the Node agent
 

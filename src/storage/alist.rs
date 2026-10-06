@@ -129,16 +129,19 @@ impl AlistStorage {
         })
     }
 
-    /// Load the persisted redirect cache. Called once during startup.
-    pub async fn load_cache(&mut self) {
-        self.cache = RedirectCache::load(self.cache.path.clone(), self.cache.ttl).await;
+    /// Replace the in-memory redirect cache with the persisted one.
+    async fn load_cache(&self) {
+        let loaded = RedirectCache::load(self.cache.path.clone(), self.cache.ttl).await;
+        *self.cache.entries.lock().await = loaded.entries.into_inner();
     }
 }
 
 #[async_trait]
 impl Storage for AlistStorage {
     async fn init(&self) -> Result<()> {
-        self.inner.init().await
+        self.inner.init().await?;
+        self.load_cache().await;
+        Ok(())
     }
 
     async fn check(&self) -> Result<bool> {
@@ -259,16 +262,5 @@ pub fn parse_duration(input: &str) -> Option<Duration> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parses_durations() {
-        assert_eq!(parse_duration("1h"), Some(Duration::from_secs(3600)));
-        assert_eq!(parse_duration("30m"), Some(Duration::from_secs(1800)));
-        assert_eq!(parse_duration("45s"), Some(Duration::from_secs(45)));
-        assert_eq!(parse_duration("2d"), Some(Duration::from_secs(172800)));
-        assert_eq!(parse_duration("500ms"), Some(Duration::from_millis(500)));
-        assert_eq!(parse_duration("nonsense"), None);
-    }
-}
+#[path = "alist_test.rs"]
+mod tests;

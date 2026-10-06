@@ -7,6 +7,7 @@ pub mod bootstrap;
 pub mod client;
 pub mod cluster;
 pub mod config;
+pub mod daemon;
 pub mod error;
 pub mod filelist;
 pub mod keepalive;

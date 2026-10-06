@@ -46,10 +46,12 @@ pub enum Error {
 }
 
 impl Error {
+    /// Convenience constructor for an unclassified error.
     pub fn other(msg: impl Into<String>) -> Self {
         Error::Other(msg.into())
     }
 
+    /// Convenience constructor for a storage backend failure.
     pub fn storage(msg: impl Into<String>) -> Self {
         Error::Storage(msg.into())
     }

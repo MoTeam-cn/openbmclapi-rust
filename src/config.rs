@@ -61,6 +61,7 @@ fn required(name: &str) -> Result<String> {
 }
 
 impl Config {
+    /// Read the configuration from the process environment.
     pub fn from_env() -> Result<Self> {
         let cluster_id = required("CLUSTER_ID")?;
         let cluster_secret = required("CLUSTER_SECRET")?;
