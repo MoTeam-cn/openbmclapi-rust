@@ -166,8 +166,18 @@ src/<domain>/
 - 写或改 `.github/workflows/` 之前，**逐个核实 action 的当前最新 major 版本**再落笔，
   禁止凭记忆写。事故记录：长期写 `actions/upload-artifact@v4` 与
   `actions/download-artifact@v4`，触发 "Node.js 20 is deprecated"，被强制在 Node 24 上运行。
-- 2026-10 已核实：`actions/checkout@v7`、`actions/upload-artifact@v5`、
-  `actions/download-artifact@v6`、`Swatinem/rust-cache@v2`。此表会过期，用前重新核实。
+- 2026-10 已核实：`actions/checkout@v7`、`actions/upload-artifact@v7`、
+  `actions/download-artifact@v8`、`Swatinem/rust-cache@v2`。此表会过期，用前重新核实。
+  现查：`gh api repos/<owner>/<repo>/releases/latest --jq .tag_name`。
+- **runner 标签也是版本。** `ubuntu-latest` 会静默升级（2026-10-19 起迁到 Ubuntu 26）。
+  产物依赖 runner 的 glibc 时（`*-unknown-linux-gnu`）必须钉到具体 LTS，例如
+  `ubuntu-22.04`（glibc 2.35）；自带 libc 的（`*-unknown-linux-musl`）才可以用
+  `latest`。事故记录：gnu 动态链接版一直用 `ubuntu-latest`，升级即静默抬高 glibc 门槛，
+  老发行版直接跑不起来。
+- 用 PowerShell 改文本文件时不要用 `Set-Content -Encoding utf8`：PS 5.1 会写入 BOM，
+  而 BOM 会让 `Cargo.toml` 变成非法 TOML（`Swatinem/rust-cache` 直接报
+  "Invalid TOML document"）。用 `[System.IO.File]::WriteAllText` 配
+  `UTF8Encoding($false)`，或直接用编辑工具。
 - 写完回读一遍所有 `uses:` 行，确认没有残留旧 major。
 - 同理适用于 `Cargo.toml` 里任何带版本号的依赖：现查，不抄记忆。
 

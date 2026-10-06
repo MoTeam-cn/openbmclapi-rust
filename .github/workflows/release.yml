@@ -75,8 +75,12 @@ jobs:
             archive: tar.gz
             musl: true
           # Linux, smaller but needs a glibc at least as new as the runner's.
+          # Pinned, and deliberately not ubuntu-latest: this binary links against
+          # the runner's glibc, so a newer runner silently raises the floor and
+          # drops older distributions. 22.04 keeps it at glibc 2.35. The musl
+          # build above carries its own libc and can follow the latest runner.
           - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
+            os: ubuntu-22.04
             label: linux-x86_64-gnu-dynamic
             archive: tar.gz
           - target: x86_64-pc-windows-msvc
@@ -171,7 +175,7 @@ jobs:
           ls -lh
 
       - name: Upload
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.label }}
           path: |
@@ -192,7 +196,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: actions/download-artifact@v6
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
