@@ -121,10 +121,10 @@ pub(super) fn parse_size_list(raw: &str) -> Result<Vec<u64>> {
         }
         let size: u64 = part
             .parse()
-            .map_err(|e| Error::Config(format!("invalid speed-test size {part:?}: {e}")))?;
+            .map_err(|e| Error::Config(format!("测速大小无效 {part:?}：{e}")))?;
         if size == 0 || size > MAX_MEASURE_MIB {
             return Err(Error::Config(format!(
-                "speed-test size {size} is outside 1..={MAX_MEASURE_MIB}"
+                "测速大小 {size} 超出 1..={MAX_MEASURE_MIB}"
             )));
         }
         if !sizes.contains(&size) {
@@ -143,7 +143,7 @@ fn parse_instances() -> Result<Vec<Instance>> {
     let Some(raw) = var("CLUSTER_INSTANCES") else {
         return Ok(Vec::new());
     };
-    serde_json::from_str(&raw).map_err(|e| Error::Config(format!("invalid CLUSTER_INSTANCES: {e}")))
+    serde_json::from_str(&raw).map_err(|e| Error::Config(format!("CLUSTER_INSTANCES 无效：{e}")))
 }
 
 impl Config {
@@ -160,7 +160,7 @@ impl Config {
             ] {
                 if var(key).is_some() {
                     return Err(Error::Config(format!(
-                        "{key} cannot be combined with CLUSTER_INSTANCES; each instance carries its own"
+                        "{key} 不能与 CLUSTER_INSTANCES 同时使用，每个实例自带该值"
                     )));
                 }
             }
@@ -179,20 +179,20 @@ impl Config {
         let port = match var("CLUSTER_PORT") {
             Some(raw) => raw
                 .parse::<u16>()
-                .map_err(|e| Error::Config(format!("invalid CLUSTER_PORT {raw:?}: {e}")))?,
+                .map_err(|e| Error::Config(format!("CLUSTER_PORT 无效 {raw:?}：{e}")))?,
             None => DEFAULT_PORT,
         };
         let cluster_public_port = match var("CLUSTER_PUBLIC_PORT") {
             Some(raw) => raw
                 .parse::<u16>()
-                .map_err(|e| Error::Config(format!("invalid CLUSTER_PUBLIC_PORT {raw:?}: {e}")))?,
+                .map_err(|e| Error::Config(format!("CLUSTER_PUBLIC_PORT 无效 {raw:?}：{e}")))?,
             None => port,
         };
         let storage = var("CLUSTER_STORAGE").unwrap_or_else(|| "file".to_string());
         let storage_opts = match var("CLUSTER_STORAGE_OPTIONS") {
             Some(raw) => Some(
                 serde_json::from_str::<serde_json::Value>(&raw)
-                    .map_err(|e| Error::Config(format!("invalid CLUSTER_STORAGE_OPTIONS: {e}")))?,
+                    .map_err(|e| Error::Config(format!("CLUSTER_STORAGE_OPTIONS 无效：{e}")))?,
             ),
             None => None,
         };

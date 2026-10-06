@@ -89,10 +89,10 @@ impl RedirectCache {
         match serde_json::to_vec(&snapshot) {
             Ok(bytes) => {
                 if let Err(e) = tokio::fs::write(&self.path, bytes).await {
-                    debug!(error = %e, "failed to persist redirect url cache");
+                    debug!(error = %e, "保存重定向链接缓存失败");
                 }
             }
-            Err(e) => debug!(error = %e, "failed to serialise redirect url cache"),
+            Err(e) => debug!(error = %e, "序列化重定向链接缓存失败"),
         }
     }
 }
@@ -245,7 +245,7 @@ impl Storage for AlistStorage {
             }
         }
 
-        warn!(status = status.as_u16(), "alist download failed");
+        warn!(status = status.as_u16(), "alist 下载失败");
         Err(Error::Status {
             status: status.as_u16(),
             url,

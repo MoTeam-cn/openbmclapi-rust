@@ -28,7 +28,7 @@ fn opt_str(opts: &Value, key: &str) -> Option<String> {
 
 /// Read a required non-empty string option.
 fn required_str(opts: &Value, key: &str) -> Result<String> {
-    opt_str(opts, key).ok_or_else(|| Error::Config(format!("oss storage requires \"{key}\"")))
+    opt_str(opts, key).ok_or_else(|| Error::Config(format!("oss 存储需要 \"{key}\"")))
 }
 
 impl OssConfig {
@@ -84,7 +84,7 @@ pub(super) fn build_base_url(config: &OssConfig) -> Result<String> {
     // configuration mistake, and the supervisor must not loop on it.
     if url::Url::parse(&base).is_err() {
         return Err(Error::Config(format!(
-            "oss storage endpoint {base:?} is not a valid URL"
+            "oss 存储的 endpoint {base:?} 不是合法 URL"
         )));
     }
     Ok(base)

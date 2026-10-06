@@ -46,7 +46,7 @@ impl OssStorage {
             Ok(false)
         } else {
             Err(Error::storage(format!(
-                "OSS HEAD {key} failed: {}",
+                "OSS HEAD {key} 失败：{}",
                 response.status()
             )))
         }
@@ -69,7 +69,7 @@ impl OssStorage {
         }
         let body = response.text().await.unwrap_or_default();
         Err(Error::storage(format!(
-            "OSS DELETE {key} failed: {status} {body}"
+            "OSS DELETE {key} 失败：{status} {body}"
         )))
     }
 
@@ -107,7 +107,7 @@ impl OssStorage {
                 let status = response.status();
                 let body = response.text().await.unwrap_or_default();
                 return Err(Error::storage(format!(
-                    "OSS ListObjects failed: {status} {body}"
+                    "OSS ListObjects 失败：{status} {body}"
                 )));
             }
             let body = response.text().await?;

@@ -39,12 +39,12 @@ impl WebdavStorage {
     /// there must not blame WebDAV.
     pub fn with_label(label: &str, opts: &Value) -> Result<Self> {
         let url = string_field(opts, "url")
-            .ok_or_else(|| Error::Config(format!("{label}: url is required")))?;
+            .ok_or_else(|| Error::Config(format!("{label}：必须提供 url")))?;
         // Caught here rather than on the first request: a malformed url is a
         // configuration mistake, and the supervisor must not loop on it.
         if url::Url::parse(&url).is_err() {
             return Err(Error::Config(format!(
-                "{label}: url {url:?} is not a valid absolute URL"
+                "{label}：url {url:?} 不是合法的绝对地址"
             )));
         }
         let base_path = string_field(opts, "basePath").unwrap_or_default();
@@ -91,7 +91,7 @@ impl Storage for WebdavStorage {
     async fn init(&self) -> Result<()> {
         let root = self.remote("");
         if !self.client.exists(&root).await? {
-            info!(path = %self.base_path, "create webdav base path");
+            info!(path = %self.base_path, "创建 WebDAV 根目录");
             self.client.create_directory(&root).await?;
         }
         Ok(())
@@ -104,7 +104,7 @@ impl Storage for WebdavStorage {
         match outcome {
             Ok(()) => Ok(true),
             Err(e) => {
-                warn!(error = %e, "storage check failed");
+                warn!(error = %e, "存储检查失败");
                 Ok(false)
             }
         }
@@ -155,7 +155,7 @@ impl Storage for WebdavStorage {
         while let Some(dir) = queue.pop() {
             let entries = self.client.propfind(&dir, 1).await?;
             checked += 1;
-            trace!(dir = %dir, checked, "scanning webdav directory");
+            trace!(dir = %dir, checked, "正在扫描 WebDAV 目录");
             for entry in entries {
                 if entry.is_dir {
                     // The reserved probe folder is not part of the master's list.
@@ -192,7 +192,7 @@ impl Storage for WebdavStorage {
                     continue;
                 }
                 if !wanted.contains(&entry.name) {
-                    info!(path = %entry.href, "delete expire file");
+                    info!(path = %entry.href, "删除过期文件");
                     if self.client.delete(&entry.href).await.is_ok() {
                         self.files.lock().await.remove(&entry.name);
                         self.exists_cache.remove(&entry.name).await;

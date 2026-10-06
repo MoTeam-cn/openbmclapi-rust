@@ -71,7 +71,7 @@ pub async fn ensure(storage: &dyn Storage, sizes: &[u64]) -> Result<usize> {
             Ok(true) => continue,
             Ok(false) => {}
             Err(e) => {
-                warn!(size_mib = size, error = %e, "cannot check the measure object");
+                warn!(size_mib = size, error = %e, "无法检查测速对象");
                 continue;
             }
         }
@@ -84,11 +84,11 @@ pub async fn ensure(storage: &dyn Storage, sizes: &[u64]) -> Result<usize> {
         };
         match storage.write_file(&object, &bytes, &info).await {
             Ok(()) => {
-                info!(size_mib = size, "uploaded a measure object");
+                info!(size_mib = size, "已上传测速对象");
                 written += 1;
             }
             Err(e) => {
-                warn!(size_mib = size, error = %e, "cannot upload the measure object");
+                warn!(size_mib = size, error = %e, "无法上传测速对象");
             }
         }
     }

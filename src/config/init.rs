@@ -13,31 +13,30 @@ pub(crate) fn init_template() -> &'static str {
     template()
 }
 
-const TEMPLATE: &str = r#"# openbmclapi agent configuration.
-# Every value here overrides the matching CLUSTER_* environment variable.
-# Uncomment the lines you need; this file may also be absent entirely.
+const TEMPLATE: &str = r#"# openbmclapi 节点配置。
+# 这里每一项都覆盖同名的环境变量；不需要的行可以留着注释，整个文件也可以不存在。
 
-# Cluster identity, issued by the master.
-# cluster_id: "your-cluster-id"
-# cluster_secret: "your-cluster-secret"
+# 集群身份，由主控下发。
+# cluster_id: "你的集群 ID"
+# cluster_secret: "你的集群密钥"
 
-# Several nodes in one process. Each needs its own port; the storage backend is
-# shared, so the files are verified once and the rest go straight to activation.
+# 单进程跑多个节点。每个节点要有自己的端口；存储后端是共用的，
+# 所以文件只校验一次，其余节点直接上线。
 # instances:
-#   - cluster_id: "your-cluster-id-a"
-#     cluster_secret: "your-cluster-secret-a"
+#   - cluster_id: "集群 ID A"
+#     cluster_secret: "集群密钥 A"
 #     port: 4000
-#   - cluster_id: "your-cluster-id-b"
-#     cluster_secret: "your-cluster-secret-b"
+#   - cluster_id: "集群 ID B"
+#     cluster_secret: "集群密钥 B"
 #     port: 4001
 
-# Listening port and advertised address.
+# 监听端口与对外地址。
 # port: 4000
-# cluster_ip: "203.0.113.10"   # an address or a hostname the master can dial
+# cluster_ip: "203.0.113.10"   # 主控能拨通的地址或域名
 # cluster_public_port: 4000
 # bmclapi_base: "https://openbmclapi.bangbang93.com"
 
-# Storage: either a single backend ...
+# 存储：单个后端……
 # storage:
 #   type: alist
 #   options:
@@ -45,8 +44,7 @@ const TEMPLATE: &str = r#"# openbmclapi agent configuration.
 #     username: "user"
 #     password: "secret"
 #
-# ... or a pool of several remote backends. The local file backend cannot
-# join a pool, so list at least two remote sources.
+# ……或者一池远端源。本地 file 后端不能进池，所以至少列两个远端源。
 # storage:
 #   sources:
 #     - type: alist
@@ -60,20 +58,20 @@ const TEMPLATE: &str = r#"# openbmclapi agent configuration.
 #         username: "user"
 #         password: "secret"
 
-# Sync tuning.
-# sync_memory_budget: 256   # MiB of download bodies buffered at once
-# measure_redirect: true    # hand out stored bandwidth probes (per source below)
-# measure_sizes: [0, 1, 2, 4, 8, 16, 32, 64, 128]   # MiB probes seeded into the backend; [] disables
+# 同步调节。
+# sync_memory_budget: 256   # 同步时同时缓冲的下载字节数（MiB）
+# measure_redirect: true    # 是否把已存的测速对象 302 给客户端（每个源还能各自退出）
+# measure_sizes: [0, 1, 2, 4, 8, 16, 32, 64, 128]   # 预置到后端的测速对象大小（MiB）；[] 关闭
 
-# Logging. Writing to a directory splits the stream into access.log,
-# sync.log, error.log and agent.log. Rotation is left to the operator.
+# 日志。写到目录会把流按类型拆成 access.log、sync.log、error.log、agent.log，
+# 轮转交给外部的 logrotate 之类。
 # log_dir: "./logs"
 # log_level: "info"
-# log_format: "pretty"   # "json" emits one object per line for a collector
+# log_format: "pretty"   # "json" 每行一个对象，给采集器用
 # plain_log: false
 # disable_access_log: false
 
-# Optional features.
+# 可选功能。
 # disable_sign: false
 # enable_upnp: false
 # byoc: false

@@ -15,7 +15,7 @@ use super::instance::{self, Role};
 /// Run one agent process to completion.
 pub async fn run(config: Config) -> Result<()> {
     let configs = config.split()?;
-    info!("booting openbmclapi {}", crate::VERSION);
+    info!("正在启动 openbmclapi {}", crate::VERSION);
     crate::server::install_crypto_provider();
 
     // One backend for every instance: that is what turns the file verification
@@ -24,7 +24,7 @@ pub async fn run(config: Config) -> Result<()> {
     if configs.len() > 1 {
         info!(
             instances = configs.len(),
-            "several nodes in one process, sharing the storage backend"
+            "单进程多节点，共用同一个存储后端"
         );
     }
 
@@ -45,11 +45,11 @@ pub async fn run(config: Config) -> Result<()> {
         match task.await {
             Ok(Ok(())) => {}
             Ok(Err(e)) => {
-                error!(error = %e, "an instance stopped");
+                error!(error = %e, "一个实例已停止");
                 failure.get_or_insert(e);
             }
             Err(e) => {
-                error!(error = %e, "an instance stopped unexpectedly");
+                error!(error = %e, "一个实例异常停止");
                 failure.get_or_insert_with(|| Error::Other(format!("instance task failed: {e}")));
             }
         }

@@ -62,8 +62,8 @@ pub async fn measure(
                 cluster.record_served(stat).await;
                 return response;
             }
-            Ok(None) => debug!(size = count, "no stored probe, generating one"),
-            Err(e) => debug!(size = count, error = %e, "stored probe failed, generating one"),
+            Ok(None) => debug!(size = count, "没有已存的测速对象，现场生成"),
+            Err(e) => debug!(size = count, error = %e, "已存的测速对象不可用，现场生成"),
         }
     }
 

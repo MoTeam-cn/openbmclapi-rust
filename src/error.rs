@@ -5,43 +5,43 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("io error: {0}")]
+    #[error("IO 错误：{0}")]
     Io(#[from] io::Error),
 
-    #[error("http error: {0}")]
+    #[error("HTTP 错误：{0}")]
     Http(#[from] reqwest::Error),
 
-    #[error("url parse error: {0}")]
+    #[error("URL 解析错误：{0}")]
     Url(#[from] url::ParseError),
 
-    #[error("json error: {0}")]
+    #[error("JSON 错误：{0}")]
     Json(#[from] serde_json::Error),
 
-    #[error("config error: {0}")]
+    #[error("配置错误：{0}")]
     Config(String),
 
-    #[error("storage error: {0}")]
+    #[error("存储错误：{0}")]
     Storage(String),
 
-    #[error("socket error: {0}")]
+    #[error("socket 错误：{0}")]
     Socket(String),
 
-    #[error("websocket error: {0}")]
+    #[error("websocket 错误：{0}")]
     WebSocket(#[from] tokio_tungstenite::tungstenite::Error),
 
-    #[error("master returned an error: {0}")]
+    #[error("主控返回了错误：{0}")]
     Service(String),
 
-    #[error("unexpected response status {status} for {url}")]
+    #[error("{url} 返回了意外的状态 {status}")]
     Status { status: u16, url: String },
 
-    #[error("upstream unavailable, retry in {retry_in_ms} ms")]
+    #[error("上游不可用，{retry_in_ms} 毫秒后重试")]
     UpstreamUnavailable { retry_in_ms: u64 },
 
-    #[error("timeout: {0}")]
+    #[error("超时：{0}")]
     Timeout(String),
 
-    #[error("not found")]
+    #[error("未找到")]
     NotFound,
 
     #[error("{0}")]

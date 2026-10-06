@@ -75,7 +75,7 @@ pub fn parse_multistatus(body: &str) -> Vec<DavEntry> {
             }
             Ok(Event::Eof) => break,
             Err(e) => {
-                warn!(error = %e, "failed to parse WebDAV multistatus");
+                warn!(error = %e, "解析 WebDAV multistatus 失败");
                 break;
             }
             _ => {}

@@ -83,7 +83,7 @@ impl MinioStorage {
             Ok(false)
         } else {
             Err(Error::storage(format!(
-                "S3 HEAD {key} failed: {}",
+                "S3 HEAD {key} 失败：{}",
                 response.status()
             )))
         }
@@ -101,7 +101,7 @@ impl MinioStorage {
         }
         let body = response.text().await.unwrap_or_default();
         Err(Error::storage(format!(
-            "S3 DELETE {key} failed: {status} {body}"
+            "S3 DELETE {key} 失败：{status} {body}"
         )))
     }
 
@@ -133,7 +133,7 @@ impl MinioStorage {
                 let status = response.status();
                 let body = response.text().await.unwrap_or_default();
                 return Err(Error::storage(format!(
-                    "S3 ListObjectsV2 failed: {status} {body}"
+                    "S3 ListObjectsV2 失败：{status} {body}"
                 )));
             }
             let body = response.text().await?;

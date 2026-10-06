@@ -136,7 +136,7 @@ impl WebdavClient {
             // 405 means it already exists, which is fine.
             if !status.is_success() && status.as_u16() != 405 {
                 return Err(Error::storage(format!(
-                    "MKCOL {current} failed with {status}"
+                    "MKCOL {current} 失败，状态 {status}"
                 )));
             }
         }

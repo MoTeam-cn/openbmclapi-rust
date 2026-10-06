@@ -24,7 +24,7 @@ pub async fn setup_upnp(port: u16, public_port: u16) -> Result<String> {
         loop {
             tokio::time::sleep(RENEW_INTERVAL).await;
             if let Err(e) = map_port(&renew, port, public_port).await {
-                error!(error = %e, "upnp renewal failed");
+                error!(error = %e, "UPnP 续期失败");
             }
         }
     });
@@ -70,7 +70,7 @@ async fn map_port(igd: &Igd, port: u16, public_port: u16) -> Result<()> {
             "AddPortMapping failed ({status}): {text}"
         )));
     }
-    info!(port, public_port, "upnp port mapped");
+    info!(port, public_port, "UPnP 端口映射完成");
     Ok(())
 }
 

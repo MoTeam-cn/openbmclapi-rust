@@ -75,6 +75,18 @@ CLUSTER_INSTANCES='[{"cluster_id":"id-a","cluster_secret":"secret-a","port":4000
 
 ## 从 Node 的 .env 迁移
 
+`openbmclapi migrate` 直接读 Node 版那份 `.env`，写出本程序能读的 `config.yaml`：
+
+```bash
+./openbmclapi migrate              # 读当前目录的 .env，写 config.yaml
+./openbmclapi migrate .env.prod    # 指定文件
+cat .env | ./openbmclapi migrate - # 从标准输入读
+./openbmclapi migrate --force      # 覆盖已存在的 config.yaml
+```
+
+转换是逐键的，没有对应项的键会在输出文件末尾以注释列出，不会被悄悄丢掉。`.env` 文件
+本身仍然会被读取，作为 YAML 之下的兜底；命令行上的环境变量优先级最高。
+
 键名一一对应，环境变量换成 YAML 的 snake_case；`storage.options` 里的键名保持上游的
 camelCase 写法不变。
 

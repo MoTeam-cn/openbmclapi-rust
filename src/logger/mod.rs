@@ -50,7 +50,7 @@ pub fn init(level: &str, plain: bool, format: LogFormat, dir: Option<&Path>) {
             Ok(()) => return,
             // A directory we cannot write is worth saying out loud, but it must
             // not stop the agent: fall back to the console alone.
-            Err(e) => eprintln!("cannot write logs to {}: {e}", dir.display()),
+            Err(e) => eprintln!("无法把日志写入 {}：{e}", dir.display()),
         }
     }
     console::init(filter, plain, format);

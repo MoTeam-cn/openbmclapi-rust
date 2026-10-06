@@ -34,13 +34,9 @@ impl Cluster {
         let cluster = Arc::clone(self);
         tokio::spawn(async move {
             match cluster.storage.gc(&files.files).await {
-                Ok(counter) if counter.count == 0 => info!("no expired files"),
-                Ok(counter) => info!(
-                    count = counter.count,
-                    bytes = counter.size,
-                    "garbage collection complete"
-                ),
-                Err(e) => error!(error = %e, "gc error"),
+                Ok(counter) if counter.count == 0 => info!("没有过期文件"),
+                Ok(counter) => info!(count = counter.count, bytes = counter.size, "垃圾回收完成"),
+                Err(e) => error!(error = %e, "垃圾回收出错"),
             }
         });
     }

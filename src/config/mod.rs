@@ -5,10 +5,12 @@
 //! the init subcommand, and yaml is the hand-written reader. The crate-facing
 //! names are re-exported here so callers keep using crate::config::...
 
+pub(crate) mod dotenv;
 mod env;
 mod file;
 pub(crate) mod init;
 mod instances;
+mod migrate;
 mod value;
 mod yaml;
 
@@ -16,3 +18,4 @@ pub use env::{Config, Flavor, StorageSource, DEFAULT_BMCLAPI_BASE, DEFAULT_PORT}
 pub use file::{load, DEFAULT_FILE};
 pub(crate) use init::init_template;
 pub use instances::Instance;
+pub use migrate::convert;

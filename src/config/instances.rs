@@ -28,32 +28,30 @@ impl Config {
     pub fn validate(&self) -> Result<()> {
         if self.instances.is_empty() {
             if self.cluster_id.is_empty() {
-                return Err(Error::Config("cluster_id is required".into()));
+                return Err(Error::Config("必须提供 cluster_id".into()));
             }
             if self.cluster_secret.is_empty() {
-                return Err(Error::Config("cluster_secret is required".into()));
+                return Err(Error::Config("必须提供 cluster_secret".into()));
             }
             return Ok(());
         }
         if !self.cluster_id.is_empty() || !self.cluster_secret.is_empty() {
             return Err(Error::Config(
-                "cluster_id / cluster_secret and instances are mutually exclusive".into(),
+                "cluster_id / cluster_secret 与 instances 互斥".into(),
             ));
         }
         let mut ports = HashSet::new();
         for (index, instance) in self.instances.iter().enumerate() {
             let label = format!("instances[{index}]");
             if instance.cluster_id.is_empty() {
-                return Err(Error::Config(format!("{label}: cluster_id is required")));
+                return Err(Error::Config(format!("{label}：必须提供 cluster_id")));
             }
             if instance.cluster_secret.is_empty() {
-                return Err(Error::Config(format!(
-                    "{label}: cluster_secret is required"
-                )));
+                return Err(Error::Config(format!("{label}：必须提供 cluster_secret")));
             }
             if !ports.insert(instance.port) {
                 return Err(Error::Config(format!(
-                    "{label}: port {} is already used by another instance",
+                    "{label}：端口 {} 已被另一个实例占用",
                     instance.port
                 )));
             }
@@ -73,7 +71,7 @@ impl Config {
         // UPnP maps one public port, so it cannot front several nodes.
         if self.instances.len() > 1 && self.enable_upnp {
             return Err(Error::Config(
-                "enable_upnp cannot map several instances; forward their ports yourself".into(),
+                "enable_upnp 无法为多个实例做映射，请自行转发它们的端口".into(),
             ));
         }
         let mut configs = Vec::with_capacity(self.instances.len());

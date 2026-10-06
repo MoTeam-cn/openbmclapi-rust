@@ -25,15 +25,15 @@ impl Cluster {
     /// Download every file that is missing or size-mismatched.
     pub async fn sync_files(&self, file_list: &FileList, sync: &SyncConfig) -> Result<()> {
         if !self.storage.check().await? {
-            return Err(Error::storage("storage is not writable"));
+            return Err(Error::storage("存储不可写"));
         }
-        info!("checking for missing files");
+        info!("正在检查缺失文件");
         let missing = self.storage.get_missing_files(&file_list.files).await?;
         if missing.is_empty() {
             return Ok(());
         }
-        info!(count = missing.len(), "mismatch found, starting sync");
-        info!(concurrency = sync.concurrency, "sync strategy");
+        info!(count = missing.len(), "发现不一致，开始同步");
+        info!(concurrency = sync.concurrency, "同步策略");
 
         self.check_free_space(&missing).await?;
 
@@ -42,10 +42,7 @@ impl Cluster {
         let done = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let has_error = Arc::new(AtomicBool::new(false));
         let budget = ByteBudget::new(self.config.sync_memory_budget.saturating_mul(1024 * 1024));
-        info!(
-            budget_mib = self.config.sync_memory_budget,
-            "download memory budget"
-        );
+        info!(budget_mib = self.config.sync_memory_budget, "下载内存预算");
 
         let progress = Progress::new(total as u64, !self.config.plain_log);
         let results = futures::stream::iter(missing)
@@ -64,16 +61,16 @@ impl Cluster {
                     progress.finish_file(bar);
                     let processed = done.fetch_add(1, Ordering::Relaxed) + 1;
                     match &outcome {
-                        Ok(()) => trace!(path = %file.path, "synced"),
+                        Ok(()) => trace!(path = %file.path, "已同步"),
                         Err(e) => {
                             has_error.store(true, Ordering::Relaxed);
-                            error!(error = %e, path = %file.path, "failed to download file");
+                            error!(error = %e, path = %file.path, "下载文件失败");
                         }
                     }
                     // With the bars on screen a line per file would shred them;
                     // the fallback keeps a piped pass observable.
                     if !progress.is_live() && (processed % 100 == 0 || processed == total) {
-                        info!(processed, total, "sync progress");
+                        info!(processed, total, "同步进度");
                     }
                     outcome
                 }
@@ -87,7 +84,7 @@ impl Cluster {
         if has_error.load(Ordering::Relaxed) {
             Err(Error::Other("sync failed".into()))
         } else {
-            info!("sync complete");
+            info!("同步完成");
             Ok(())
         }
     }
@@ -109,13 +106,13 @@ impl Cluster {
             Ok(usage) => usage,
             Err(e) => {
                 // A filesystem we cannot probe is not a reason to refuse work.
-                debug!(error = %e, "cannot read free space, skipping the check");
+                debug!(error = %e, "读不到剩余空间，跳过检查");
                 return Ok(());
             }
         };
         if usage.free < required {
             return Err(Error::storage(format!(
-                "not enough free space: {} MiB free, about {} MiB needed",
+                "剩余空间不足：可用 {} MiB，约需 {} MiB",
                 usage.free / (1024 * 1024),
                 required / (1024 * 1024)
             )));
@@ -124,7 +121,7 @@ impl Cluster {
             warn!(
                 free_mib = usage.free / (1024 * 1024),
                 free_percent = (usage.free_ratio() * 100.0).round(),
-                "the cache filesystem is getting full"
+                "缓存所在文件系统空间不足"
             );
         }
         Ok(())
@@ -149,7 +146,7 @@ impl Cluster {
                         error = %failure.error,
                         path = %file.path,
                         attempt,
-                        "download failed, retrying"
+                        "下载失败，正在重试"
                     );
                     tokio::time::sleep(Duration::from_millis(200 * attempt as u64)).await;
                 }
@@ -170,7 +167,7 @@ impl Cluster {
             "error": serde_json::to_string(&json!({ "message": error.to_string() })).unwrap_or_default(),
         });
         if let Err(e) = self.client.report(payload).await {
-            error!(error = %e, "failed to report redirect");
+            error!(error = %e, "上报重定向失败");
         }
     }
 }

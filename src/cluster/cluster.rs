@@ -110,7 +110,7 @@ impl Cluster {
                     "UPnP returned a non-public address: {ip}"
                 )));
             }
-            info!(ip = %ip, "upnp mapping established");
+            info!(ip = %ip, "UPnP 映射已建立");
             *self.host.lock().await = Some(ip);
         }
         Ok(())
@@ -123,43 +123,43 @@ impl Cluster {
         tokio::spawn(async move {
             loop {
                 match events.recv().await {
-                    Ok(SocketEvent::Connected) => debug!("socket connected"),
+                    Ok(SocketEvent::Connected) => debug!("socket 已连接"),
                     Ok(SocketEvent::Message(payload)) => {
-                        info!(payload = %payload, "master message")
+                        info!(payload = %payload, "主控消息")
                     }
                     Ok(SocketEvent::WardenError(payload)) => {
-                        warn!(payload = %payload, "master reported a warden error")
+                        warn!(payload = %payload, "主控报告了 warden 错误")
                     }
                     Ok(SocketEvent::Exception(payload)) => {
-                        error!(payload = %payload, "server exception")
+                        error!(payload = %payload, "服务端异常")
                     }
                     Ok(SocketEvent::ConnectError(payload)) => {
-                        error!(payload = %payload, "the master refused the connection");
+                        error!(payload = %payload, "主控拒绝了连接");
                         cluster.is_enabled.store(false, Ordering::Relaxed);
                         cluster.keepalive.stop();
                     }
                     Ok(SocketEvent::Disconnected(reason)) => {
-                        warn!(reason, "disconnected from master");
+                        warn!(reason, "已与主控断开");
                         cluster.is_enabled.store(false, Ordering::Relaxed);
                         cluster.keepalive.stop();
                     }
                     Ok(SocketEvent::Reconnect(attempt)) => {
-                        info!(attempt, "reconnected to master");
+                        info!(attempt, "已重新连接主控");
                         if cluster.want_enable.load(Ordering::Relaxed) {
-                            info!("re-enabling after reconnect");
+                            info!("重连后重新上线");
                             if let Err(e) = cluster.enable().await {
-                                error!(error = %e, "reconnect: cannot connect to server");
+                                error!(error = %e, "重连：无法连接服务器");
                                 cluster.exit(1);
                             }
                         }
                     }
-                    Ok(SocketEvent::ReconnectError(e)) => error!(error = %e, "reconnect_error"),
+                    Ok(SocketEvent::ReconnectError(e)) => error!(error = %e, "重连错误"),
                     Ok(SocketEvent::ReconnectFailed) => {
-                        error!("reconnect failed");
+                        error!("重连失败");
                         cluster.exit(1);
                     }
                     Err(broadcast::error::RecvError::Lagged(skipped)) => {
-                        warn!(skipped, "socket event listener lagged")
+                        warn!(skipped, "socket 事件监听落后")
                     }
                     Err(broadcast::error::RecvError::Closed) => break,
                 }

@@ -18,7 +18,7 @@ use super::{alist, file, oss, s3, webdav};
 pub fn create(config: &Config) -> Result<Arc<dyn Storage>> {
     let sources = config.storage_sources.as_slice();
     if sources.is_empty() {
-        return Err(Error::Config("no storage source configured".into()));
+        return Err(Error::Config("没有配置任何存储源".into()));
     }
     let mut built = Vec::with_capacity(sources.len());
     let mut policy = Vec::with_capacity(sources.len());
@@ -40,7 +40,7 @@ fn build(config: &Config, source: &StorageSource) -> Result<Arc<dyn Storage>> {
         "oss" => Arc::new(oss::OssStorage::new(&source.options)?),
         "webdav" => Arc::new(webdav::WebdavStorage::new(&source.options)?),
         "alist" => Arc::new(alist::AlistStorage::new(&source.options)?),
-        other => return Err(Error::Config(format!("unknown storage type: {other}"))),
+        other => return Err(Error::Config(format!("未知的存储类型：{other}"))),
     };
     Ok(storage)
 }

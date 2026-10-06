@@ -7,7 +7,7 @@ fn a_missing_url_names_alist_not_webdav() {
         Err(e) => e,
     };
     assert!(
-        error.to_string().contains("alist: url is required"),
+        error.to_string().contains("alist：必须提供 url"),
         "the message must name the backend that was configured, got: {error}"
     );
 }

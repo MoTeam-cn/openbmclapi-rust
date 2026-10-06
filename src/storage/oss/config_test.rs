@@ -34,10 +34,7 @@ fn a_malformed_endpoint_is_a_configuration_error() {
         Ok(_) => panic!("a malformed endpoint must be rejected"),
         Err(e) => e,
     };
-    assert!(
-        error.to_string().contains("not a valid URL"),
-        "got: {error}"
-    );
+    assert!(error.to_string().contains("不是合法 URL"), "got: {error}");
 }
 
 #[test]

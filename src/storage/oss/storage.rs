@@ -87,12 +87,12 @@ impl Storage for OssStorage {
         let body = Bytes::from(now_ms().to_string());
         let outcome = self.put_object(&key, body).await;
         if let Err(err) = self.delete_object(&key).await {
-            warn!(%err, "failed to delete temp file");
+            warn!(%err, "删除临时文件失败");
         }
         match outcome {
             Ok(()) => Ok(true),
             Err(err) => {
-                error!(%err, "storage check failed");
+                error!(%err, "存储检查失败");
                 Ok(false)
             }
         }
@@ -186,7 +186,7 @@ impl Storage for OssStorage {
             if wanted.contains(hash) {
                 continue;
             }
-            info!(path = %object.key, "delete expire file");
+            info!(path = %object.key, "删除过期文件");
             self.delete_object(&object.key).await?;
             self.files.lock().await.remove(hash);
             counter.count += 1;
@@ -229,7 +229,7 @@ impl Storage for OssStorage {
             );
             let response = builder
                 .body(body)
-                .map_err(|err| Error::other(format!("failed to build proxy response: {err}")))?;
+                .map_err(|err| Error::other(format!("构造代理响应失败：{err}")))?;
             return Ok((response, ServeStat { bytes, hits: 1 }));
         }
 
@@ -267,7 +267,7 @@ impl Storage for OssStorage {
             .status(StatusCode::FOUND)
             .header(header::LOCATION, location.as_str())
             .body(Body::empty())
-            .map_err(|err| Error::other(format!("failed to build redirect response: {err}")))?;
+            .map_err(|err| Error::other(format!("构造重定向响应失败：{err}")))?;
         Ok((response, ServeStat { bytes, hits: 1 }))
     }
 }

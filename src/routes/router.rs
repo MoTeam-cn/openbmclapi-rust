@@ -68,7 +68,7 @@ async fn log_request(request: Request, next: Next) -> Response {
         length = %length,
         referer = %referer,
         user_agent = %user_agent,
-        "request"
+        "请求"
     );
     response
 }

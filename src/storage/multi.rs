@@ -46,14 +46,10 @@ impl MultiStorage {
         measure_redirect: Vec<bool>,
     ) -> Result<Self> {
         if sources.is_empty() {
-            return Err(Error::Config(
-                "a storage pool needs at least one source".into(),
-            ));
+            return Err(Error::Config("存储池至少需要一个源".into()));
         }
         if sources.len() != measure_redirect.len() {
-            return Err(Error::Config(
-                "the probe policy needs one entry per source".into(),
-            ));
+            return Err(Error::Config("测速策略需要与源数量一一对应".into()));
         }
         Ok(MultiStorage {
             sources,
@@ -89,7 +85,7 @@ impl Storage for MultiStorage {
             source
                 .init()
                 .await
-                .map_err(|e| Error::storage(format!("source {index} failed to initialise: {e}")))?;
+                .map_err(|e| Error::storage(format!("源 {index} 初始化失败：{e}")))?;
         }
         Ok(())
     }
@@ -110,13 +106,13 @@ impl Storage for MultiStorage {
             if let Err(e) = source.write_file(path, content, file_info).await {
                 // Best effort: a source that missed the write simply reports the
                 // object as missing on the next sync pass and gets it then.
-                warn!(source = index, path, error = %e, "replication failed");
+                warn!(source = index, path, error = %e, "复制失败");
                 failures += 1;
                 last = Some(e);
             }
         }
         if failures == self.sources.len() {
-            return Err(last.unwrap_or_else(|| Error::storage("every source rejected the write")));
+            return Err(last.unwrap_or_else(|| Error::storage("所有源都拒绝了这次写入")));
         }
         Ok(())
     }
@@ -161,13 +157,13 @@ impl Storage for MultiStorage {
             match self.sources[index].serve(req).await {
                 Ok(ok) => {
                     if offset > 0 {
-                        info!(source = index, offset, "served from a fallback source");
+                        info!(source = index, offset, "由备用源应答");
                     }
                     return Ok(ok);
                 }
                 Err(Error::NotFound) => {}
                 Err(e) => {
-                    warn!(source = index, error = %e, "source failed, trying the next one");
+                    warn!(source = index, error = %e, "该源失败，尝试下一个");
                     last = Some(e);
                 }
             }
@@ -193,16 +189,13 @@ impl Storage for MultiStorage {
             match super::measure::serve_from(&*self.sources[index], size_mib).await {
                 Ok(Some(ok)) => {
                     if offset > 0 {
-                        info!(
-                            source = index,
-                            offset, "probe served from a fallback source"
-                        );
+                        info!(source = index, offset, "测速由备用源应答");
                     }
                     return Ok(Some(ok));
                 }
                 Ok(None) => {}
                 Err(e) => {
-                    warn!(source = index, error = %e, "probe source failed, trying the next one");
+                    warn!(source = index, error = %e, "测速源失败，尝试下一个");
                     last = Some(e);
                 }
             }

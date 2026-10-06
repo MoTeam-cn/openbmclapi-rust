@@ -36,7 +36,7 @@ fn pem_blocks(pem: &str, label: &str) -> Vec<Vec<u8>> {
 pub fn parse_certificates(pem: &str) -> Result<Vec<CertificateDer<'static>>> {
     let blocks = pem_blocks(pem, "CERTIFICATE");
     if blocks.is_empty() {
-        return Err(Error::Config("no CERTIFICATE block found in PEM".into()));
+        return Err(Error::Config("PEM 里没有 CERTIFICATE 块".into()));
     }
     Ok(blocks.into_iter().map(CertificateDer::from).collect())
 }
@@ -52,7 +52,7 @@ pub fn parse_private_key(pem: &str) -> Result<PrivateKeyDer<'static>> {
     if let Some(block) = pem_blocks(pem, "EC PRIVATE KEY").into_iter().next() {
         return Ok(PrivateKeyDer::Sec1(PrivateSec1KeyDer::from(block)));
     }
-    Err(Error::Config("no private key block found in PEM".into()))
+    Err(Error::Config("PEM 里没有私钥块".into()))
 }
 
 #[cfg(test)]

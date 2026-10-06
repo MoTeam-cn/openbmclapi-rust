@@ -46,7 +46,7 @@ pub(super) async fn discover() -> Result<Igd> {
             Ok(Ok((len, from))) => {
                 let text = String::from_utf8_lossy(&buffer[..len]);
                 if let Some(location) = header_value(&text, "location") {
-                    debug!(%from, location, "ssdp response");
+                    debug!(%from, location, "收到 SSDP 响应");
                     if !locations.contains(&location) {
                         locations.push(location);
                     }
@@ -72,7 +72,7 @@ pub(super) async fn discover() -> Result<Igd> {
     for location in locations {
         match describe(&http, &location, local_ip).await {
             Ok(igd) => return Ok(igd),
-            Err(e) => warn!(error = %e, location, "unusable UPnP device"),
+            Err(e) => warn!(error = %e, location, "UPnP 设备不可用"),
         }
     }
     Err(Error::Other(

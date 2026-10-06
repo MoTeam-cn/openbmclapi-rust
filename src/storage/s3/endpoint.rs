@@ -18,13 +18,13 @@ pub(super) struct Endpoint {
 impl Endpoint {
     /// Parse a storage URL: credentials in the userinfo, `region` in the query.
     pub(super) fn parse(raw: &str, default_region: Option<&str>) -> Result<Self> {
-        let url = Url::parse(raw)
-            .map_err(|e| Error::Config(format!("invalid storage url {raw:?}: {e}")))?;
+        let url =
+            Url::parse(raw).map_err(|e| Error::Config(format!("存储地址无效 {raw:?}：{e}")))?;
         let host = match url.host() {
             Some(url::Host::Ipv6(addr)) => format!("[{addr}]"),
             Some(url::Host::Ipv4(addr)) => addr.to_string(),
             Some(url::Host::Domain(domain)) => domain.to_string(),
-            None => return Err(Error::Config(format!("storage url {raw:?} has no host"))),
+            None => return Err(Error::Config(format!("存储地址 {raw:?} 没有主机名"))),
         };
         let region = url
             .query_pairs()
@@ -58,12 +58,11 @@ impl Endpoint {
 
 /// Split `<bucket>/<prefix...>` out of a storage URL path.
 pub(super) fn split_bucket_prefix(raw: &str) -> Result<(String, String)> {
-    let url =
-        Url::parse(raw).map_err(|e| Error::Config(format!("invalid storage url {raw:?}: {e}")))?;
+    let url = Url::parse(raw).map_err(|e| Error::Config(format!("存储地址无效 {raw:?}：{e}")))?;
     let mut segments = url.path().split('/').filter(|segment| !segment.is_empty());
     let bucket = segments
         .next()
-        .ok_or_else(|| Error::Config(format!("storage url {raw:?} has no bucket")))?
+        .ok_or_else(|| Error::Config(format!("存储地址 {raw:?} 没有 bucket")))?
         .to_string();
     let prefix = segments.collect::<Vec<_>>().join("/");
     Ok((bucket, prefix))

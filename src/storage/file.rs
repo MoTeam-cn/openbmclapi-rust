@@ -53,7 +53,7 @@ impl Storage for FileStorage {
         match outcome {
             Ok(()) => Ok(true),
             Err(e) => {
-                warn!(error = %e, "storage check failed");
+                warn!(error = %e, "存储检查失败");
                 Ok(false)
             }
         }
@@ -139,7 +139,7 @@ impl Storage for FileStorage {
                     continue;
                 }
                 if !wanted.contains(&key) {
-                    info!(path = %path.display(), "delete expire file");
+                    info!(path = %path.display(), "删除过期文件");
                     if tokio::fs::remove_file(&path).await.is_ok() {
                         counter.count += 1;
                         counter.size += metadata.len();

@@ -2,7 +2,7 @@
 
 /// A YAML reader failure, always carrying the 1-based input line.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[error("line {line}: {message}")]
+#[error("第 {line} 行：{message}")]
 pub(crate) struct YamlError {
     /// 1-based line the failure was detected on.
     pub(crate) line: usize,

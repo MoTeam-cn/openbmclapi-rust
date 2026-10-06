@@ -38,21 +38,15 @@ fn load_file(path: Option<&Path>) -> Result<Config> {
     match std::fs::read_to_string(&path) {
         Ok(text) => {
             let document = yaml::parse(&text)
-                .map_err(|e| Error::Config(format!("{}: {e}", path.display())))?;
-            let root = document.as_object().ok_or_else(|| {
-                Error::Config(format!(
-                    "{}: the document root must be a mapping",
-                    path.display()
-                ))
-            })?;
+                .map_err(|e| Error::Config(format!("{}：{e}", path.display())))?;
+            let root = document
+                .as_object()
+                .ok_or_else(|| Error::Config(format!("{}：文档根必须是映射", path.display())))?;
             apply(&mut config, root)?;
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
         Err(e) => {
-            return Err(Error::Config(format!(
-                "cannot read {}: {e}",
-                path.display()
-            )));
+            return Err(Error::Config(format!("无法读取 {}：{e}", path.display())));
         }
     }
     config.validate()?;
@@ -89,9 +83,7 @@ fn apply(config: &mut Config, root: &Map<String, Value>) -> Result<()> {
             "instances" => config.instances = instance_list(value)?,
             "storage" => apply_storage(config, value)?,
             other => {
-                return Err(Error::Config(format!(
-                    "unknown configuration key {other:?}"
-                )));
+                return Err(Error::Config(format!("未知的配置项 {other:?}")));
             }
         }
     }
@@ -104,9 +96,7 @@ fn instance_list(value: &Value) -> Result<Vec<Instance>> {
         .as_array()
         .ok_or_else(|| type_error("instances", "a list", value))?;
     if items.is_empty() {
-        return Err(Error::Config(
-            "instances must contain at least one entry".into(),
-        ));
+        return Err(Error::Config("instances 至少要有一项".into()));
     }
     let mut parsed = Vec::with_capacity(items.len());
     for (index, item) in items.iter().enumerate() {
@@ -125,7 +115,7 @@ fn parse_instance(label: &str, value: &Value) -> Result<Instance> {
             key.as_str(),
             "cluster_id" | "cluster_secret" | "port" | "cluster_public_port" | "cluster_ip"
         ) {
-            return Err(Error::Config(format!("{label}: unknown key {key:?}")));
+            return Err(Error::Config(format!("{label}：未知的键 {key:?}")));
         }
     }
     let text = |name: &str| match map.get(name) {
@@ -159,7 +149,7 @@ fn apply_storage(config: &mut Config, value: &Value) -> Result<()> {
     let sources = map.get("sources");
     if single && sources.is_some() {
         return Err(Error::Config(
-            "storage: 'type'/'options' and 'sources' are mutually exclusive".into(),
+            "storage：'type'/'options' 与 'sources' 互斥".into(),
         ));
     }
     let parsed = if let Some(sources) = sources {
@@ -167,16 +157,14 @@ fn apply_storage(config: &mut Config, value: &Value) -> Result<()> {
             .as_array()
             .ok_or_else(|| type_error("storage.sources", "a list", sources))?;
         if list.is_empty() {
-            return Err(Error::Config(
-                "storage.sources must contain at least one source".into(),
-            ));
+            return Err(Error::Config("storage.sources 至少要有一个源".into()));
         }
         let mut parsed = Vec::with_capacity(list.len());
         for (index, item) in list.iter().enumerate() {
             let source = parse_source(&format!("storage.sources[{index}]"), item)?;
             if source.kind == "file" {
                 return Err(Error::Config(format!(
-                    "storage.sources[{index}]: the local file backend cannot join a multi-source pool"
+                    "storage.sources[{index}]：本地 file 后端不能加入多源池"
                 )));
             }
             parsed.push(source);
@@ -185,9 +173,7 @@ fn apply_storage(config: &mut Config, value: &Value) -> Result<()> {
     } else if single {
         vec![parse_source("storage", value)?]
     } else {
-        return Err(Error::Config(
-            "storage must set either 'type' or 'sources'".into(),
-        ));
+        return Err(Error::Config("storage 必须设置 'type' 或 'sources'".into()));
     };
     let first = &parsed[0];
     config.storage = first.kind.clone();
@@ -207,17 +193,17 @@ fn parse_source(label: &str, value: &Value) -> Result<StorageSource> {
         .ok_or_else(|| type_error(label, "a mapping", value))?;
     for key in map.keys() {
         if key != "type" && key != "options" && key != "measure_redirect" {
-            return Err(Error::Config(format!("{label}: unknown key {key:?}")));
+            return Err(Error::Config(format!("{label}：未知的键 {key:?}")));
         }
     }
     let kind = map
         .get("type")
-        .ok_or_else(|| Error::Config(format!("{label}: 'type' is required")))?;
+        .ok_or_else(|| Error::Config(format!("{label}：必须提供 'type'")))?;
     let kind = kind
         .as_str()
         .ok_or_else(|| type_error(&format!("{label}.type"), "a string", kind))?;
     if kind.is_empty() {
-        return Err(Error::Config(format!("{label}: 'type' must not be empty")));
+        return Err(Error::Config(format!("{label}：'type' 不能为空")));
     }
     let options = match map.get("options") {
         None | Some(Value::Null) => Value::Null,

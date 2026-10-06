@@ -23,7 +23,7 @@ pub(crate) async fn ensure_success(
         .take(512)
         .collect();
     Err(Error::storage(format!(
-        "{backend} {op} {key} failed: {status} {body}"
+        "{backend} {op} {key} 失败：{status} {body}"
     )))
 }
 

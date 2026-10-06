@@ -102,9 +102,7 @@ fn the_file_backend_cannot_join_a_sources_list() {
     );
     let error = load(Some(file.path())).expect_err("the file backend must be rejected");
     assert!(
-        error
-            .to_string()
-            .contains("cannot join a multi-source pool"),
+        error.to_string().contains("不能加入多源池"),
         "unexpected error: {error}"
     );
 }
@@ -118,7 +116,7 @@ fn type_and_sources_together_are_rejected() {
     );
     let error = load(Some(file.path())).expect_err("type and sources are exclusive");
     assert!(
-        error.to_string().contains("mutually exclusive"),
+        error.to_string().contains("互斥"),
         "unexpected error: {error}"
     );
 }
@@ -129,7 +127,7 @@ fn an_empty_sources_list_is_rejected() {
     let file = TempFile::write("config.yaml", "storage:\n  sources: []\n");
     let error = load(Some(file.path())).expect_err("an empty pool is meaningless");
     assert!(
-        error.to_string().contains("at least one source"),
+        error.to_string().contains("至少要有一个源"),
         "unexpected error: {error}"
     );
 }
@@ -236,7 +234,7 @@ fn instances_in_the_file_conflict_with_the_environment_identity() {
         "instances:\n  - cluster_id: \"a\"\n    cluster_secret: \"sa\"\n    port: 4000\n",
     );
     let error = load(Some(file.path())).expect_err("the two forms are exclusive");
-    assert!(error.to_string().contains("mutually exclusive"), "{error}");
+    assert!(error.to_string().contains("互斥"), "{error}");
 }
 
 #[test]

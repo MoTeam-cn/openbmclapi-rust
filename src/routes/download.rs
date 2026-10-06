@@ -35,7 +35,7 @@ pub async fn download(
         if matches!(e, Error::NotFound) {
             return StatusCode::NOT_FOUND.into_response();
         }
-        debug!(error = %e, hash, "download from master failed");
+        debug!(error = %e, hash, "从主控下载失败");
         return StatusCode::NOT_FOUND.into_response();
     }
 
@@ -65,7 +65,7 @@ pub async fn download(
         // one struggling; shed the request with a hint instead of a hard 500.
         Err(Error::Status { status, .. }) if status >= 500 => unavailable(DEFAULT_RETRY_AFTER_MS),
         Err(e) => {
-            debug!(error = %e, hash, "storage serve failed");
+            debug!(error = %e, hash, "存储后端应答失败");
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
     }

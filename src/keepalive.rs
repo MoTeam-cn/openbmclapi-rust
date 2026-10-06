@@ -51,26 +51,26 @@ impl Keepalive {
         let handle = tokio::spawn(async move {
             loop {
                 tokio::time::sleep(this.interval).await;
-                trace!("sending keep-alive");
+                trace!("发送心跳");
                 let outcome = tokio::time::timeout(REPORT_TIMEOUT, this.emit_keep_alive()).await;
                 match outcome {
                     Ok(Ok(true)) => {
                         this.errors.store(0, Ordering::Relaxed);
                     }
                     Ok(Ok(false)) => {
-                        info!("kicked by server, restarting");
+                        info!("被主控踢下线，正在重启");
                         this.restart().await;
                     }
                     Ok(Err(e)) => {
                         let count = this.errors.fetch_add(1, Ordering::Relaxed) + 1;
-                        error!(error = %e, count, "keep alive error");
+                        error!(error = %e, count, "心跳出错");
                         if count >= MAX_ERRORS {
                             this.restart().await;
                         }
                     }
                     Err(_) => {
                         let count = this.errors.fetch_add(1, Ordering::Relaxed) + 1;
-                        error!(count, "keep alive timed out");
+                        error!(count, "心跳超时");
                         if count >= MAX_ERRORS {
                             this.restart().await;
                         }
@@ -114,11 +114,7 @@ impl Keepalive {
         if let Some(err) = err {
             return Err(Error::Service(err.to_string()));
         }
-        info!(
-            hits = counters.hits,
-            bytes = counters.bytes,
-            "keep alive success"
-        );
+        info!(hits = counters.hits, bytes = counters.bytes, "心跳成功");
         cluster.subtract_counters(counters).await;
         Ok(date.is_some_and(|v| !v.is_null() && v != &serde_json::Value::Bool(false)))
     }
@@ -129,19 +125,19 @@ impl Keepalive {
         };
         let attempt = async {
             if let Err(e) = cluster.disable().await {
-                error!(error = %e, "disable during restart failed");
+                error!(error = %e, "重启前注销失败");
             }
             cluster.connect().await;
             cluster.enable().await
         };
         match tokio::time::timeout(RESTART_TIMEOUT, attempt).await {
-            Ok(Ok(())) => info!("cluster restarted"),
+            Ok(Ok(())) => info!("集群已重启"),
             Ok(Err(e)) => {
-                error!(error = %e, "restart failed");
+                error!(error = %e, "重启失败");
                 cluster.exit(1);
             }
             Err(_) => {
-                error!("restart timed out");
+                error!("重启超时");
                 cluster.exit(1);
             }
         }

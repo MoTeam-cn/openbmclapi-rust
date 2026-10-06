@@ -43,7 +43,7 @@ impl Role {
 /// Run one instance to completion.
 pub(super) async fn run(cluster: Arc<Cluster>, role: Role) -> Result<()> {
     let id = cluster.config.cluster_id.clone();
-    info!(cluster_id = %id, port = cluster.config.port, "starting instance");
+    info!(cluster_id = %id, port = cluster.config.port, "启动实例");
 
     cluster.spawn_event_listener();
     // Authenticate before anything else, like the Node agent.
@@ -69,9 +69,9 @@ pub(super) async fn run(cluster: Arc<Cluster>, role: Role) -> Result<()> {
     cluster.port_check().await?;
     let files = prepare(&cluster, role).await?;
 
-    info!(cluster_id = %id, "requesting activation");
+    info!(cluster_id = %id, "请求上线");
     cluster.enable().await?;
-    info!(cluster_id = %id, files = files.files.len(), "done, serving files");
+    info!(cluster_id = %id, files = files.files.len(), "已就绪，开始提供文件");
     println!("{READY_MARKER}");
 
     let last = Arc::new(tokio::sync::Mutex::new(files));
@@ -82,10 +82,10 @@ pub(super) async fn run(cluster: Arc<Cluster>, role: Role) -> Result<()> {
     };
 
     wait_for_shutdown().await;
-    info!(cluster_id = %id, "shutting down, unregistering cluster");
+    info!(cluster_id = %id, "正在关闭，注销集群");
     checker.abort();
     if let Err(e) = cluster.disable().await {
-        error!(error = %e, "failed to unregister");
+        error!(error = %e, "注销失败");
     }
     http.close();
     let _ = serving.await;
@@ -95,14 +95,14 @@ pub(super) async fn run(cluster: Arc<Cluster>, role: Role) -> Result<()> {
 /// Establish the TLS material, or report that the agent serves plain HTTP.
 async fn setup_certificate(cluster: &Arc<Cluster>) -> Result<Option<CertPair>> {
     if !cluster.config.byoc {
-        info!("requesting certificate from the master");
+        info!("正在向主控申请证书");
         return cluster.request_cert().await.map(Some);
     }
     if cluster.config.ssl_cert.is_none() || cluster.config.ssl_key.is_none() {
-        info!("BYOC without a certificate, falling back to HTTP");
+        info!("自带证书模式但未提供证书，回退到 HTTP");
         return Ok(None);
     }
-    info!("using the supplied certificate");
+    info!("使用自备证书");
     cluster.use_self_cert().await.map(Some)
 }
 
@@ -119,7 +119,7 @@ async fn prepare(cluster: &Arc<Cluster>, role: Role) -> Result<FileList> {
         Role::Follower(mut gate) => {
             wait_for_verification(&mut gate).await?;
             let files = cluster.get_file_list(None).await?;
-            info!(files = files.files.len(), "file list fetched");
+            info!(files = files.files.len(), "已获取文件列表");
             Ok(files)
         }
     }
@@ -128,7 +128,7 @@ async fn prepare(cluster: &Arc<Cluster>, role: Role) -> Result<FileList> {
 /// Compare the storage against the master's list and collect the garbage.
 async fn verify(cluster: &Arc<Cluster>) -> Result<FileList> {
     if !cluster.storage.check().await? {
-        return Err(Error::storage("storage check failed"));
+        return Err(Error::storage("存储检查失败"));
     }
     // Seed the probes now that the backend is known writable. The local cache
     // is skipped on purpose: it is the disk the agent already runs on, so the
@@ -137,13 +137,13 @@ async fn verify(cluster: &Arc<Cluster>) -> Result<FileList> {
         let written =
             crate::storage::measure::ensure(&*cluster.storage, &cluster.config.measure_sizes)
                 .await?;
-        info!(written, "seeded measure objects");
+        info!(written, "已预置测速对象");
     }
     let configuration = cluster.get_configuration().await?;
     let files = cluster.get_file_list(None).await?;
-    info!(files = files.files.len(), "file list fetched");
+    info!(files = files.files.len(), "已获取文件列表");
     cluster.sync_files(&files, &configuration.sync).await?;
-    info!("collecting garbage");
+    info!("正在回收垃圾");
     cluster.gc_background(files.clone());
     Ok(files)
 }
@@ -151,7 +151,7 @@ async fn verify(cluster: &Arc<Cluster>) -> Result<FileList> {
 /// Wait for the leader to finish verifying the files.
 async fn wait_for_verification(gate: &mut watch::Receiver<Option<bool>>) -> Result<()> {
     if gate.borrow().is_none() {
-        info!("waiting for the first instance to verify the files");
+        info!("等待第一个实例完成文件校验");
     }
     loop {
         let current = *gate.borrow();
@@ -174,25 +174,25 @@ async fn wait_for_verification(gate: &mut watch::Receiver<Option<bool>>) -> Resu
 async fn check_files(cluster: Arc<Cluster>, last: Arc<tokio::sync::Mutex<FileList>>) {
     loop {
         tokio::time::sleep(FILE_CHECK_INTERVAL).await;
-        debug!("refresh files");
+        debug!("刷新文件");
         let last_modified = last.lock().await.files.iter().map(|file| file.mtime).max();
         match cluster.get_file_list(last_modified).await {
-            Ok(list) if list.files.is_empty() => debug!("no new files"),
+            Ok(list) if list.files.is_empty() => debug!("没有新文件"),
             Ok(list) => {
                 let configuration = match cluster.get_configuration().await {
                     Ok(configuration) => configuration,
                     Err(e) => {
-                        error!(error = %e, "failed to fetch configuration");
+                        error!(error = %e, "获取配置失败");
                         continue;
                     }
                 };
                 if let Err(e) = cluster.sync_files(&list, &configuration.sync).await {
-                    error!(error = %e, "sync failed");
+                    error!(error = %e, "同步失败");
                     continue;
                 }
                 *last.lock().await = list;
             }
-            Err(e) => error!(error = %e, "failed to refresh the file list"),
+            Err(e) => error!(error = %e, "刷新文件列表失败"),
         }
     }
 }
@@ -205,7 +205,7 @@ pub async fn wait_for_shutdown() {
         let mut term = match signal(SignalKind::terminate()) {
             Ok(term) => term,
             Err(e) => {
-                warn!(error = %e, "cannot listen for SIGTERM");
+                warn!(error = %e, "无法监听 SIGTERM");
                 let _ = tokio::signal::ctrl_c().await;
                 return;
             }

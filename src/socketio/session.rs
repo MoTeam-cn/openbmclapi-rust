@@ -45,7 +45,7 @@ impl Inner {
                 }
                 Err(e) => {
                     let _ = self.events.send(SocketEvent::ReconnectError(e.to_string()));
-                    error!(error = %e, "socket connection error");
+                    error!(error = %e, "socket 连接错误");
                 }
             }
 
@@ -64,7 +64,7 @@ impl Inner {
             trace!(
                 attempt,
                 delay_ms = delay.as_millis() as u64,
-                "reconnecting socket"
+                "正在重连 socket"
             );
             tokio::time::sleep(delay).await;
         }
@@ -110,7 +110,7 @@ impl Inner {
         }
 
         self.connected.store(true, Ordering::Relaxed);
-        debug!("socket.io connected");
+        debug!("socket.io 已连接");
         let _ = self.events.send(SocketEvent::Connected);
         Ok(stream)
     }
@@ -132,7 +132,7 @@ impl Inner {
                             }
                         }
                         Some(Ok(Message::Binary(_))) => {
-                            trace!("ignoring binary socket.io frame");
+                            trace!("忽略二进制 socket.io 帧");
                         }
                         Some(Ok(Message::Ping(payload))) => {
                             let _ = stream.send(Message::Pong(payload)).await;
@@ -167,7 +167,7 @@ impl Inner {
         };
 
         self.connected.store(false, Ordering::Relaxed);
-        info!(reason = %reason, "socket disconnected");
+        info!(reason = %reason, "socket 已断开");
         let _ = self.events.send(SocketEvent::Disconnected(reason));
     }
 
@@ -232,19 +232,19 @@ impl Inner {
                     };
                     match name.as_str() {
                         "message" => {
-                            info!(payload = %payload, "master message");
+                            info!(payload = %payload, "主控消息");
                             let _ = self.events.send(SocketEvent::Message(payload));
                         }
                         "warden-error" => {
-                            warn!(payload = %payload, "master reported a warden error");
+                            warn!(payload = %payload, "主控报告了 warden 错误");
                             let _ = self.events.send(SocketEvent::WardenError(payload));
                         }
                         "exception" => {
-                            error!(payload = %payload, "server exception");
+                            error!(payload = %payload, "服务端异常");
                             let _ = self.events.send(SocketEvent::Exception(payload));
                         }
                         other => {
-                            debug!(event = other, payload = %payload, "unhandled socket event");
+                            debug!(event = other, payload = %payload, "未处理的 socket 事件");
                         }
                     }
                 }

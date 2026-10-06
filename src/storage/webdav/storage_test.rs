@@ -9,7 +9,7 @@ fn a_missing_url_names_the_backend() {
         Err(e) => e,
     };
     assert!(
-        error.to_string().contains("webdav: url is required"),
+        error.to_string().contains("webdav：必须提供 url"),
         "got: {error}"
     );
 }
@@ -22,7 +22,7 @@ fn a_malformed_url_is_a_configuration_error() {
         Err(e) => e,
     };
     assert!(
-        error.to_string().contains("not a valid absolute URL"),
+        error.to_string().contains("不是合法的绝对地址"),
         "got: {error}"
     );
 }

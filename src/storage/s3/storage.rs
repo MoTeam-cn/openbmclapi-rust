@@ -50,7 +50,7 @@ impl MinioStorage {
             .get("url")
             .and_then(Value::as_str)
             .filter(|value| !value.is_empty())
-            .ok_or_else(|| Error::Config("minio storage requires a non-empty \"url\"".into()))?;
+            .ok_or_else(|| Error::Config("minio 存储需要一个非空的 \"url\"".into()))?;
         let public = Endpoint::parse(raw, None)?;
         let internal = match opts.get("internalUrl").and_then(Value::as_str) {
             Some(value) if !value.is_empty() => Endpoint::parse(value, Some(&public.region))?,
@@ -103,15 +103,15 @@ impl Storage for MinioStorage {
         }
         .await;
         if let Err(err) = self.delete_object(&self.internal, &key).await {
-            warn!(%err, "failed to delete temp file");
+            warn!(%err, "删除临时文件失败");
         }
         if let Err(err) = self.delete_object(&self.public, &key).await {
-            warn!(%err, "failed to delete temp file");
+            warn!(%err, "删除临时文件失败");
         }
         match outcome {
             Ok(()) => Ok(true),
             Err(err) => {
-                error!(%err, "storage check failed");
+                error!(%err, "存储检查失败");
                 Ok(false)
             }
         }
@@ -202,7 +202,7 @@ impl Storage for MinioStorage {
             if wanted.contains(hash) {
                 continue;
             }
-            info!(path = %object.key, "delete expire file");
+            info!(path = %object.key, "删除过期文件");
             self.delete_object(&self.internal, &object.key).await?;
             self.files.lock().await.remove(hash);
             counter.count += 1;
@@ -233,7 +233,7 @@ impl Storage for MinioStorage {
             .status(StatusCode::FOUND)
             .header(header::LOCATION, location.as_str())
             .body(Body::empty())
-            .map_err(|err| Error::other(format!("failed to build redirect response: {err}")))?;
+            .map_err(|err| Error::other(format!("构造重定向响应失败：{err}")))?;
         Ok((response, ServeStat { bytes, hits: 1 }))
     }
 }

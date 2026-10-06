@@ -62,7 +62,7 @@ impl HttpServer {
     /// Accept connections until `close` is called.
     pub async fn serve(self: Arc<Self>) -> Result<()> {
         let mut shutdown = self.shutdown.subscribe();
-        info!(addr = %self.listener.local_addr().map(|a| a.to_string()).unwrap_or_default(), tls = self.tls.is_some(), "listening");
+        info!(addr = %self.listener.local_addr().map(|a| a.to_string()).unwrap_or_default(), tls = self.tls.is_some(), "开始监听");
 
         loop {
             tokio::select! {
@@ -76,7 +76,7 @@ impl HttpServer {
                     let (stream, peer) = match accepted {
                         Ok(pair) => pair,
                         Err(e) => {
-                            warn!(error = %e, "accept failed");
+                            warn!(error = %e, "接受连接失败");
                             tokio::time::sleep(std::time::Duration::from_millis(50)).await;
                             continue;
                         }
@@ -97,15 +97,15 @@ impl HttpServer {
                                 Ok(tls_stream) => {
                                     let io = TokioIo::new(tls_stream);
                                     if let Err(e) = builder.serve_connection_with_upgrades(io, service).await {
-                                        debug!(%peer, error = %e, "tls connection ended");
+                                        debug!(%peer, error = %e, "TLS 连接结束");
                                     }
                                 }
-                                Err(e) => debug!(%peer, error = %e, "tls handshake failed"),
+                                Err(e) => debug!(%peer, error = %e, "TLS 握手失败"),
                             },
                             None => {
                                 let io = TokioIo::new(stream);
                                 if let Err(e) = builder.serve_connection_with_upgrades(io, service).await {
-                                    debug!(%peer, error = %e, "connection ended");
+                                    debug!(%peer, error = %e, "连接结束");
                                 }
                             }
                         }
@@ -113,7 +113,7 @@ impl HttpServer {
                 }
             }
         }
-        debug!("listener closed");
+        debug!("监听已关闭");
         Ok(())
     }
 }
@@ -125,7 +125,7 @@ pub fn tls_config(cert_pem: &str, key_pem: &str) -> Result<Arc<rustls::ServerCon
     let mut config = rustls::ServerConfig::builder()
         .with_no_client_auth()
         .with_single_cert(certificates, key)
-        .map_err(|e| Error::Config(format!("invalid TLS certificate: {e}")))?;
+        .map_err(|e| Error::Config(format!("TLS 证书无效：{e}")))?;
     config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
     Ok(Arc::new(config))
 }
@@ -141,7 +141,7 @@ pub fn install_crypto_provider() {
             .install_default()
             .is_err()
         {
-            debug!("rustls crypto provider already installed");
+            debug!("rustls 加密提供者已安装");
         }
     });
 }

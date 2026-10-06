@@ -88,7 +88,7 @@ impl Cluster {
         if self.is_enabled() {
             return Ok(());
         }
-        trace!("enable");
+        trace!("上线");
         let payload = serde_json::to_value(self.enable_payload().await)?;
         let ack = self
             .socket
@@ -106,7 +106,7 @@ impl Cluster {
         if ack != Some(&Value::Bool(true)) {
             return Err(Error::Other("failed to register cluster".into()));
         }
-        info!("start doing my job");
+        info!("开始干活");
         self.is_enabled.store(true, Ordering::Relaxed);
         self.want_enable.store(true, Ordering::Relaxed);
         self.keepalive.start();
@@ -166,7 +166,7 @@ impl Cluster {
     pub async fn use_self_cert(&self) -> Result<CertPair> {
         let (Some(cert), Some(key)) = (self.config.ssl_cert.clone(), self.config.ssl_key.clone())
         else {
-            return Err(Error::Config("missing SSL certificate or key".into()));
+            return Err(Error::Config("缺少 SSL 证书或私钥".into()));
         };
         Ok(CertPair {
             cert: read_cert_material(&cert, "ssl_cert").await?,
@@ -187,5 +187,5 @@ async fn read_cert_material(source: &str, label: &str) -> Result<String> {
     }
     tokio::fs::read_to_string(source)
         .await
-        .map_err(|e| Error::Config(format!("cannot read {label} {source:?}: {e}")))
+        .map_err(|e| Error::Config(format!("无法读取 {label} {source:?}：{e}")))
 }

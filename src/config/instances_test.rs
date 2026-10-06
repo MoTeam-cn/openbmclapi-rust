@@ -88,7 +88,7 @@ fn two_instances_on_one_port_are_rejected() {
     let error = config()
         .split()
         .expect_err("duplicate ports must be refused");
-    assert!(error.to_string().contains("already used"), "{error}");
+    assert!(error.to_string().contains("已被另一个实例占用"), "{error}");
 }
 
 #[test]
@@ -118,7 +118,7 @@ fn a_top_level_identity_and_instances_are_mutually_exclusive() {
         cluster_ip: None,
     });
     let error = config.validate().expect_err("the two forms are exclusive");
-    assert!(error.to_string().contains("mutually exclusive"), "{error}");
+    assert!(error.to_string().contains("互斥"), "{error}");
 }
 
 #[test]
@@ -137,5 +137,8 @@ fn identity_variables_are_refused_alongside_instances() {
         r#"[{"cluster_id":"a","cluster_secret":"sa","port":4000}]"#,
     );
     let error = Config::from_env().expect_err("CLUSTER_ID must not be combined");
-    assert!(error.to_string().contains("cannot be combined"), "{error}");
+    assert!(
+        error.to_string().contains("不能与 CLUSTER_INSTANCES"),
+        "{error}"
+    );
 }

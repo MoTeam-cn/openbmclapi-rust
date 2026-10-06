@@ -11,8 +11,9 @@ cargo build --release
 ## 运行
 
 ```bash
-./openbmclapi init     # 生成 config.yaml，每一项都有注释
-./openbmclapi          # 启动
+./openbmclapi init       # 生成 config.yaml，每一项都有注释
+./openbmclapi migrate    # 把 Node 版的 .env 转成 config.yaml
+./openbmclapi            # 启动
 ```
 
 ## 配置

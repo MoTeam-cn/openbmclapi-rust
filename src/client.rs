@@ -200,7 +200,7 @@ impl BmclapiClient {
     pub async fn post_json_ok(&self, path: &str, body: &serde_json::Value) -> Result<()> {
         let fetched = self.post_json(path, body).await?;
         if !fetched.is_success() {
-            debug!(status = %fetched.status, path, "master rejected request");
+            debug!(status = %fetched.status, path, "主控拒绝了请求");
             return Err(Error::Status {
                 status: fetched.status.as_u16(),
                 url: path.to_string(),

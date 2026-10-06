@@ -132,7 +132,7 @@ impl Inner {
             .await?;
 
         self.ttl_ms.store(token.ttl, Ordering::Relaxed);
-        trace!(ttl = token.ttl, "acquired cluster token");
+        trace!(ttl = token.ttl, "已获取集群令牌");
         Ok(token.token)
     }
 
@@ -153,7 +153,7 @@ impl Inner {
             .await?;
         self.ttl_ms.store(token.ttl, Ordering::Relaxed);
         *self.token.write().await = Some(token.token);
-        debug!("refreshed cluster token");
+        debug!("已刷新集群令牌");
         Ok(())
     }
 
@@ -169,10 +169,10 @@ impl Inner {
                 } else {
                     60_000
                 };
-                trace!(next_ms = next, "scheduled token refresh");
+                trace!(next_ms = next, "已安排令牌刷新");
                 tokio::time::sleep(Duration::from_millis(next as u64)).await;
                 if let Err(e) = self.refresh().await {
-                    error!(error = %e, "refresh token error");
+                    error!(error = %e, "刷新令牌出错");
                 }
             }
         });

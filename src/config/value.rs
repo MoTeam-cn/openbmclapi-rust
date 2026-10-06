@@ -64,11 +64,11 @@ pub(super) fn positive(key: &str, value: &Value) -> Result<u64> {
         Value::String(text) => text
             .trim()
             .parse::<u64>()
-            .map_err(|e| Error::Config(format!("{key:?} is not a number: {e}")))?,
+            .map_err(|e| Error::Config(format!("{key:?} 不是数字：{e}")))?,
         other => return Err(type_error(key, "a positive number", other)),
     };
     if number == 0 {
-        return Err(Error::Config(format!("{key:?} must be greater than zero")));
+        return Err(Error::Config(format!("{key:?} 必须大于 0")));
     }
     Ok(number)
 }
@@ -81,15 +81,14 @@ pub(super) fn port(key: &str, value: &Value) -> Result<u16> {
         Value::String(text) => text
             .trim()
             .parse::<u64>()
-            .map_err(|e| Error::Config(format!("{key:?} is not a valid port: {e}")))?,
+            .map_err(|e| Error::Config(format!("{key:?} 不是合法端口：{e}")))?,
         other => return Err(type_error(key, "a port number", other)),
     };
-    u16::try_from(number)
-        .map_err(|_| Error::Config(format!("{key:?} port {number} is out of range")))
+    u16::try_from(number).map_err(|_| Error::Config(format!("{key:?} 端口 {number} 超出范围")))
 }
 
 pub(super) fn type_error(key: &str, expected: &str, value: &Value) -> Error {
-    Error::Config(format!("{key:?} must be {expected}, found {}", kind(value)))
+    Error::Config(format!("{key:?} 应为 {expected}，实际是 {}", kind(value)))
 }
 
 pub(super) fn kind(value: &Value) -> &'static str {
