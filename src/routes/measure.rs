@@ -13,13 +13,13 @@ use crate::cluster::Cluster;
 use crate::storage::measure;
 use crate::util::check_sign;
 
-/// Megabyte payload template (`0066ccff` repeated), matching the Node agent.
-fn template() -> Vec<u8> {
-    let mut buffer = Vec::with_capacity(1024 * 1024);
-    for _ in 0..(1024 * 1024 / 4) {
-        buffer.extend_from_slice(&[0x00, 0x66, 0xcc, 0xff]);
-    }
-    buffer
+/// One megabyte of incompressible bytes.
+///
+/// A repeating pattern compresses away in transit, so a proxy or CDN applying
+/// gzip would report a throughput unrelated to moving real data. The stored
+/// probes come from the same generator, so both paths measure the same thing.
+fn probe_chunk() -> Vec<u8> {
+    measure::payload(1)
 }
 
 /// Stream `size` megabytes back to the caller.
@@ -66,7 +66,7 @@ pub async fn measure(
         }
     }
 
-    let chunk = template();
+    let chunk = probe_chunk();
     let stream = futures::stream::iter(
         (0..count).map(move |_| Ok::<_, std::io::Error>(bytes::Bytes::from(chunk.clone()))),
     );
