@@ -144,7 +144,7 @@ impl Cluster {
     }
 
     /// Ask the master for a TLS certificate pair.
-    pub async fn request_cert(&self) -> Result<()> {
+    pub async fn request_cert(&self) -> Result<CertPair> {
         let ack = self
             .socket
             .emit_with_ack("request-cert", Value::Null, DISABLE_TIMEOUT)
@@ -159,33 +159,33 @@ impl Cluster {
             ));
         }
         let pair: CertPair = serde_json::from_value(value.cloned().unwrap_or(Value::Null))?;
-        let dir = self.config.tmp_dir();
-        tokio::fs::create_dir_all(&dir).await?;
-        tokio::fs::write(dir.join("cert.pem"), pair.cert).await?;
-        tokio::fs::write(dir.join("key.pem"), pair.key).await?;
-        Ok(())
+        Ok(pair)
     }
 
-    /// Materialise a BYOC certificate/key into the working directory.
-    pub async fn use_self_cert(&self) -> Result<()> {
+    /// Read the BYOC certificate/key named by the configuration.
+    pub async fn use_self_cert(&self) -> Result<CertPair> {
         let (Some(cert), Some(key)) = (self.config.ssl_cert.clone(), self.config.ssl_key.clone())
         else {
             return Err(Error::Config("missing SSL certificate or key".into()));
         };
-        let dir = self.config.tmp_dir();
-        tokio::fs::create_dir_all(&dir).await?;
-        write_cert_material(&cert, &dir.join("cert.pem")).await?;
-        write_cert_material(&key, &dir.join("key.pem")).await?;
-        Ok(())
+        Ok(CertPair {
+            cert: read_cert_material(&cert, "ssl_cert").await?,
+            key: read_cert_material(&key, "ssl_key").await?,
+        })
     }
 }
 
-/// Copy a certificate/key file, or write its inline contents.
-async fn write_cert_material(source: &str, target: &std::path::Path) -> Result<()> {
-    if std::path::Path::new(source).exists() {
-        tokio::fs::copy(source, target).await?;
-    } else {
-        tokio::fs::write(target, source).await?;
+/// Read certificate material: either a path to a file, or the PEM itself.
+///
+/// The pair is handed straight to the TLS setup, so nothing is staged on disk —
+/// a private key in the temporary directory is a liability, not a convenience.
+/// A path that exists but cannot be read is a configuration mistake and is
+/// reported as one, so the supervisor does not loop on it.
+async fn read_cert_material(source: &str, label: &str) -> Result<String> {
+    if !std::path::Path::new(source).exists() {
+        return Ok(source.to_string());
     }
-    Ok(())
+    tokio::fs::read_to_string(source)
+        .await
+        .map_err(|e| Error::Config(format!("cannot read {label} {source:?}: {e}")))
 }

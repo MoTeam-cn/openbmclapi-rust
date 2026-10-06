@@ -22,6 +22,25 @@ fn config_defaults_and_default_endpoint() {
 }
 
 #[test]
+fn a_malformed_endpoint_is_a_configuration_error() {
+    let config = OssConfig::parse(&json!({
+        "accessKeyId": "a",
+        "accessKeySecret": "b",
+        "bucket": "c",
+        "endpoint": "not a url"
+    }))
+    .unwrap();
+    let error = match build_base_url(&config) {
+        Ok(_) => panic!("a malformed endpoint must be rejected"),
+        Err(e) => e,
+    };
+    assert!(
+        error.to_string().contains("not a valid URL"),
+        "got: {error}"
+    );
+}
+
+#[test]
 fn config_region_and_internal() {
     let config = OssConfig::parse(&json!({
         "accessKeyId": "a",

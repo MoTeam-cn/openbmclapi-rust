@@ -37,55 +37,70 @@ repository.
 
 These are intentional and each one is a deliberate choice, not an oversight.
 1. **Runtime flavour.** `flavor.runtime` is reported as `Rust/<crate version>`
-   where Node reported `Node.js/<process.version>`. The field is informational.2. **Storage keys use `/` on every platform.** Node's `path.join` produced
+   where Node reported `Node.js/<process.version>`. The field is informational.
+2. **Storage keys use `/` on every platform.** Node's `path.join` produced
    backslash-separated object keys on Windows; here remote keys are always
-   `ab/abcdef…`, and only the local file backend maps them onto native paths.3. **MinIO garbage collection compares basenames.** Node compared the full
+   `ab/abcdef…`, and only the local file backend maps them onto native paths.
+3. **MinIO garbage collection compares basenames.** Node compared the full
    relative key against a set of hashes, which classified every object as
    expired. Both cloud backends now compare the object basename (the content
-   hash) so a GC pass cannot delete live data.4. **S3 uses path-style addressing.** `minio-js` may pick virtual-host style for
+   hash) so a GC pass cannot delete live data.
+4. **S3 uses path-style addressing.** `minio-js` may pick virtual-host style for
    non-IP hosts. Path-style is used unconditionally because the configuration
    schema exposes no `pathStyle` switch and it is the safest choice for MinIO
-   and other S3-compatible endpoints.5. **OSS uses a read timeout rather than a total timeout** in proxy mode, so a
+   and other S3-compatible endpoints.
+5. **OSS uses a read timeout rather than a total timeout** in proxy mode, so a
    long streaming download is not cut off at 300 s. The MinIO client keeps the
-   total timeout.6. **Token refresh retries.** Node scheduled the next refresh only after a
-   successful refresh; this port retries on the same schedule after a failure.7. **File-list refresh uses the new list.** Node passed the *initial* file list
+   total timeout.
+6. **Token refresh retries.** Node scheduled the next refresh only after a
+   successful refresh; this port retries on the same schedule after a failure.
+7. **File-list refresh uses the new list.** Node passed the *initial* file list
    to `syncFiles` inside its periodic check; here the freshly fetched list is
-   used, which is what the surrounding code clearly intends.8. **Multi-range requests.** The local file backend answers a single `Range` with
+   used, which is what the surrounding code clearly intends.
+8. **Multi-range requests.** The local file backend answers a single `Range` with
    `206`; multi-range requests receive the full `200` body (a valid server
-   response) instead of a `multipart/byteranges` payload.9. **Redirect reporting is coarser.** `reqwest` exposes the final URL but not
+   response) instead of a `multipart/byteranges` payload.
+9. **Redirect reporting is coarser.** `reqwest` exposes the final URL but not
     the intermediate chain, so `openbmclapi/report` receives
-    `[requested, final]` rather than every hop.10. **Progress reporting.** The `cli-progress` multi-bar is reproduced: two
+    `[requested, final]` rather than every hop.
+10. **Progress reporting.** The `cli-progress` multi-bar is reproduced: two
     lines redrawn in place, one over the file count and one over the bytes of
     the object on show. Concurrent downloads each keep their own byte counter
     and the bar shows the oldest one still in flight, so unrelated files never
     share a number. The display only draws on a terminal; a piped run, or
-    `PLAIN_LOG`, falls back to the periodic `sync progress` line every 100 files.11. **Upstream resilience.** The Node agent had no error boundary on the WebDAV
+    `PLAIN_LOG`, falls back to the periodic `sync progress` line every 100 files.
+11. **Upstream resilience.** The Node agent had no error boundary on the WebDAV
     and alist paths, so a struggling upstream (typically AList/OpenList) took
     the agent down with it. This port wraps every WebDAV request in a circuit
     breaker, an adaptive concurrency cap and bounded retries, streams proxied
     bodies instead of buffering them, treats a 429 as the WebDAV auth lockout
     rather than as load, and answers `503` plus `Retry-After` when the backend
-    itself is the problem.12. **A YAML configuration file.** Node read the environment only. This port
+    itself is the problem.
+12. **A YAML configuration file.** Node read the environment only. This port
     layers `config.yaml` (or `--config FILE`) over the environment, so a file
     alone can configure an agent, and adds `openbmclapi init` to write a
     commented skeleton. The YAML reader is hand-written: the offline registry
     carries no YAML crate, and the project already hand-writes Avro, SigV4 and
     the engine.io client. It emits `serde_json::Value`, so every existing
-    option lookup is untouched.13. **Multi-source storage pools.** A `sources` list builds a pool that
+    option lookup is untouched.
+13. **Multi-source storage pools.** A `sources` list builds a pool that
     round-robins downloads across the sources, falls through to the next one
     when a source fails, replicates writes to every source, treats an object as
     present only when all sources have it, unions the missing-file reports and
     sums the GC counters. The local `file` backend is rejected inside a pool
-    because it is the agent's cache rather than a remote mirror.14. **Structured logs.** `LOG_FORMAT=json` emits one JSON object per line for a
+    because it is the agent's cache rather than a remote mirror.
+14. **Structured logs.** `LOG_FORMAT=json` emits one JSON object per line for a
     log collector; `PLAIN_LOG` still controls ANSI output and `RUST_LOG`
     overrides `LOGLEVEL` for per-module filtering.
 15. **The local file backend writes atomically.** Node wrote straight to the
     final path, so a concurrent download could observe a half-written object.
     This port fills a `.part` sibling and renames it into place, and the GC
-    skips staging files.16. **The sync pass holds a byte budget.** Downloads are buffered whole so
+    skips staging files.
+16. **The sync pass holds a byte budget.** Downloads are buffered whole so
     their checksum can be verified, and `concurrency` alone bounds how many run
     at once but not how large they are. A budget (`SYNC_MEMORY_BUDGET`, default
-    256 MiB) is handed out by size, so a large object takes the budget alone.17. **The sync pass checks free space first.** It refuses a pass that would not
+    256 MiB) is handed out by size, so a large object takes the budget alone.
+17. **The sync pass checks free space first.** It refuses a pass that would not
     fit and warns once the filesystem drops below 5% free, instead of filling
     the disk and failing in less legible ways.
 18. **Bandwidth probes live in the backend.** Node generated the `/measure`
@@ -99,7 +114,8 @@ These are intentional and each one is a deliberate choice, not an oversight.
     runs on, so the route keeps generating the payload. The payload is an
     incompressible xorshift stream rather than a repeating pattern, so a
     compressing backend or CDN cannot flatter the measurement, and every
-    backend's GC skips the reserved folder.19. **Per-category log files.** `LOG_DIR` appends the stream to `access.log`,
+    backend's GC skips the reserved folder.
+19. **Per-category log files.** `LOG_DIR` appends the stream to `access.log`,
     `sync.log`, `error.log` and `agent.log` alongside the console. Node wrote
     everything to stdout and left collection to the operator. Files are opened
     for append, so a restart continues the history and rotation stays with
@@ -117,6 +133,26 @@ These are intentional and each one is a deliberate choice, not an oversight.
     activation. Node ran one node per process, which meant one download pass
     per node against the same backend.
 
+22. **Who answers a bandwidth probe is configurable.** `measure_redirect`
+    switches the redirect off globally and each source can opt out on its own, so a
+    pool can measure through a fast public bucket and never point a client at a
+    private mirror. The probe objects are still replicated to every source, since
+    the check requires each one to be complete.
+23. **A configuration error ends the process.** Node's supervisor restarted the
+    worker on any exit, so a bad configuration produced an endless restart loop
+    behind a growing backoff. A worker now exits with code 2 for an error that a
+    restart cannot clear, and the supervisor stops and reports it. Everything
+    else — network, credentials, permissions, the port — keeps retrying, which is
+    what lets the agent recover once the environment changes.
+24. **The certificate pair is never staged on disk.** Node wrote `cert.pem` and
+    `key.pem` into a temporary directory and read them straight back. Both
+    callers already hold the material, so the round trip bought nothing, added a
+    way to fail, and dropped a private key into a world-readable directory.
+25. **Storage urls are validated at construction.** A malformed `url` used to be
+    accepted and only fail on the first request, as a transient error the
+    supervisor retried forever. Every backend now rejects it up front as a
+    configuration error.
+
 ## Not ported
 
 - **The bundled nginx front-end.** Node could launch an nginx that owned the
@@ -125,11 +161,11 @@ These are intentional and each one is a deliberate choice, not an oversight.
   choice — point your own reverse proxy or CDN at it. `GET /auth` remains, for
   a front-end that wants an `auth_request` hook.
 
-* `pkg`-based single-binary packaging (`package.json#pkg`) — `cargo build`
+- `pkg`-based single-binary packaging (`package.json#pkg`) — `cargo build`
   already produces a self-contained executable.
-* pino's pretty transport. Logging goes through `tracing`, with the two line
+- pino's pretty transport. Logging goes through `tracing`, with the two line
   shapes reproduced by hand; use `LOG_FORMAT=json` for a collector and
   `PLAIN_LOG` to control ANSI output.
-* The Node agent's `.gitlab-ci.yml`, ESLint/Prettier/husky tooling and
+- The Node agent's `.gitlab-ci.yml`, ESLint/Prettier/husky tooling and
   `docker-compose` files. A GitHub Actions workflow replaces the lint/test
   pipeline.

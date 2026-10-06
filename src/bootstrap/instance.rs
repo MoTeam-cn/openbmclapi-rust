@@ -12,7 +12,7 @@ use crate::cluster::Cluster;
 use crate::error::{Error, Result};
 use crate::routes;
 use crate::server::{self, HttpServer};
-use crate::types::FileList;
+use crate::types::{CertPair, FileList};
 
 /// Marker the supervisor watches for on the worker's stdout.
 pub const READY_MARKER: &str = "OPENBMCLAPI_READY";
@@ -51,17 +51,11 @@ pub(super) async fn run(cluster: Arc<Cluster>, role: Role) -> Result<()> {
     cluster.init().await?;
     cluster.connect().await;
 
-    let use_https = setup_certificate(&cluster).await?;
-
     // The agent owns the public port and terminates TLS itself. Whatever sits
     // in front of it — a reverse proxy, a CDN, nothing — is the operator's call.
-    let tls = if use_https {
-        let dir = cluster.config.tmp_dir();
-        let cert = tokio::fs::read_to_string(dir.join("cert.pem")).await?;
-        let key = tokio::fs::read_to_string(dir.join("key.pem")).await?;
-        Some(server::tls_config(&cert, &key)?)
-    } else {
-        None
+    let tls = match setup_certificate(&cluster).await? {
+        Some(pair) => Some(server::tls_config(&pair.cert, &pair.key)?),
+        None => None,
     };
 
     let router = routes::router(Arc::clone(&cluster));
@@ -98,20 +92,18 @@ pub(super) async fn run(cluster: Arc<Cluster>, role: Role) -> Result<()> {
     Ok(())
 }
 
-/// Establish the TLS material, reporting whether HTTPS is in use.
-async fn setup_certificate(cluster: &Arc<Cluster>) -> Result<bool> {
+/// Establish the TLS material, or report that the agent serves plain HTTP.
+async fn setup_certificate(cluster: &Arc<Cluster>) -> Result<Option<CertPair>> {
     if !cluster.config.byoc {
         info!("requesting certificate from the master");
-        cluster.request_cert().await?;
-        return Ok(true);
+        return cluster.request_cert().await.map(Some);
     }
     if cluster.config.ssl_cert.is_none() || cluster.config.ssl_key.is_none() {
         info!("BYOC without a certificate, falling back to HTTP");
-        return Ok(false);
+        return Ok(None);
     }
     info!("using the supplied certificate");
-    cluster.use_self_cert().await?;
-    Ok(true)
+    cluster.use_self_cert().await.map(Some)
 }
 
 /// Get the instance ready to serve.

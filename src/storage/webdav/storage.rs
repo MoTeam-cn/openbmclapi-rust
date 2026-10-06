@@ -40,6 +40,13 @@ impl WebdavStorage {
     pub fn with_label(label: &str, opts: &Value) -> Result<Self> {
         let url = string_field(opts, "url")
             .ok_or_else(|| Error::Config(format!("{label}: url is required")))?;
+        // Caught here rather than on the first request: a malformed url is a
+        // configuration mistake, and the supervisor must not loop on it.
+        if url::Url::parse(&url).is_err() {
+            return Err(Error::Config(format!(
+                "{label}: url {url:?} is not a valid absolute URL"
+            )));
+        }
         let base_path = string_field(opts, "basePath").unwrap_or_default();
         let client = WebdavClient::new(
             &url,

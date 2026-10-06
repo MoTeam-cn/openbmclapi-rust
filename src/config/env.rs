@@ -261,20 +261,6 @@ impl Config {
             .unwrap_or_else(|_| std::path::PathBuf::from("."))
             .join("cache")
     }
-
-    /// Temporary working directory for certificates, mirroring the Node agent.
-    ///
-    /// Keyed by identity: several instances in one process would otherwise
-    /// overwrite each other's certificate.
-    pub fn tmp_dir(&self) -> std::path::PathBuf {
-        let id: String = self
-            .cluster_id
-            .chars()
-            .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
-            .collect();
-        let id = if id.is_empty() { "node" } else { &id };
-        std::env::temp_dir().join("openbmclapi").join(id)
-    }
 }
 
 /// Serialises tests that mutate the process environment, which is global.

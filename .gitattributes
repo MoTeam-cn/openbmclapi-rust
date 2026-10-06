@@ -1,0 +1,5 @@
+# The repository ships five platform targets and CI runs cargo fmt --check on one
+# of them. Without this, a Windows checkout with core.autocrlf unset produces CRLF
+# sources, rustfmt rewrites them to LF, and the check fails on files that were
+# never wrong.
+* text=auto eol=lf

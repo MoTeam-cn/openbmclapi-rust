@@ -53,28 +53,41 @@ impl OssConfig {
 
 /// Resolve the base URL (scheme + host, no trailing slash) for the bucket.
 pub(super) fn build_base_url(config: &OssConfig) -> Result<String> {
-    if let Some(endpoint) = &config.endpoint {
-        let endpoint = endpoint.trim_end_matches('/');
-        if endpoint.starts_with("http://") || endpoint.starts_with("https://") {
-            return Ok(endpoint.to_string());
+    let base = match &config.endpoint {
+        Some(endpoint) => {
+            let endpoint = endpoint.trim_end_matches('/');
+            if endpoint.starts_with("http://") || endpoint.starts_with("https://") {
+                endpoint.to_string()
+            } else {
+                format!("https://{endpoint}")
+            }
         }
-        return Ok(format!("https://{endpoint}"));
-    }
-    let mut region_host = match &config.region {
-        Some(region) if region.contains(".aliyuncs.com") => region.clone(),
-        Some(region) if region.starts_with("oss-") => format!("{region}.aliyuncs.com"),
-        Some(region) => format!("oss-{region}.aliyuncs.com"),
-        None => "oss-cn-hangzhou.aliyuncs.com".to_string(),
+        None => {
+            let mut region_host = match &config.region {
+                Some(region) if region.contains(".aliyuncs.com") => region.clone(),
+                Some(region) if region.starts_with("oss-") => format!("{region}.aliyuncs.com"),
+                Some(region) => format!("oss-{region}.aliyuncs.com"),
+                None => "oss-cn-hangzhou.aliyuncs.com".to_string(),
+            };
+            if config.internal {
+                region_host = region_host.replace(".aliyuncs.com", "-internal.aliyuncs.com");
+            }
+            let host = if config.cname {
+                region_host
+            } else {
+                format!("{}.{}", config.bucket, region_host)
+            };
+            format!("https://{host}")
+        }
     };
-    if config.internal {
-        region_host = region_host.replace(".aliyuncs.com", "-internal.aliyuncs.com");
+    // Caught here rather than on the first request: a malformed endpoint is a
+    // configuration mistake, and the supervisor must not loop on it.
+    if url::Url::parse(&base).is_err() {
+        return Err(Error::Config(format!(
+            "oss storage endpoint {base:?} is not a valid URL"
+        )));
     }
-    let host = if config.cname {
-        region_host
-    } else {
-        format!("{}.{}", config.bucket, region_host)
-    };
-    Ok(format!("https://{host}"))
+    Ok(base)
 }
 
 #[cfg(test)]

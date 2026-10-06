@@ -139,21 +139,3 @@ fn identity_variables_are_refused_alongside_instances() {
     let error = Config::from_env().expect_err("CLUSTER_ID must not be combined");
     assert!(error.to_string().contains("cannot be combined"), "{error}");
 }
-
-#[test]
-fn each_instance_gets_its_own_temporary_directory() {
-    let _guard = base();
-    std::env::set_var(
-        "CLUSTER_INSTANCES",
-        r#"[{"cluster_id":"a","cluster_secret":"sa","port":4000},
-            {"cluster_id":"b","cluster_secret":"sb","port":4001}]"#,
-    );
-    std::env::remove_var("CLUSTER_ID");
-    std::env::remove_var("CLUSTER_SECRET");
-    let split = config().split().expect("split");
-    assert_ne!(
-        split[0].tmp_dir(),
-        split[1].tmp_dir(),
-        "certificates would overwrite each other"
-    );
-}
