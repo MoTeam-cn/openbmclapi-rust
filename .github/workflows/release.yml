@@ -222,10 +222,18 @@ jobs:
         run: |
           set -euo pipefail
           tag="${GITHUB_REF_NAME}"
+          version="${{ needs.sync-version.outputs.version }}"
+          # A version with a suffix is a prerelease, which keeps it out of the
+          # "latest release" slot. Spelled out either way so a re-run settles the
+          # flag instead of leaving whatever was there.
+          case "$version" in
+            *-*) prerelease="--prerelease" ;;
+            *) prerelease="--prerelease=false" ;;
+          esac
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release upload "$tag" dist/*.tar.gz dist/*.zip dist/*.sha256 --clobber
-            gh release edit "$tag" --notes-file notes.md
+            gh release edit "$tag" --notes-file notes.md "$prerelease"
           else
-            gh release create "$tag" --title "$tag" --notes-file notes.md \
+            gh release create "$tag" --title "$tag" --notes-file notes.md "$prerelease" \
               dist/*.tar.gz dist/*.zip dist/*.sha256
           fi
