@@ -19,6 +19,8 @@ pub mod routes;
 pub mod server;
 pub mod socketio;
 pub mod storage;
+#[cfg(test)]
+pub(crate) mod testutil;
 pub mod tls;
 pub mod token;
 pub mod types;

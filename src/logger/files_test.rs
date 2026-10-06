@@ -1,6 +1,7 @@
 use tracing::Level;
 
 use super::{is_access, is_agent, is_error, is_sync, open, ACCESS_TARGET};
+use crate::testutil::TempDir;
 
 #[test]
 fn request_lines_go_to_the_access_file_only() {
@@ -33,13 +34,11 @@ fn everything_else_lands_in_the_agent_file() {
 
 #[test]
 fn opening_creates_one_file_per_category() {
-    let dir = std::env::temp_dir().join(format!("openbmclapi-logs-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
+    let dir = TempDir::new("logs");
 
-    open(&dir).expect("the directory is writable");
+    open(dir.path()).expect("the directory is writable");
 
     for name in ["access.log", "sync.log", "error.log", "agent.log"] {
-        assert!(dir.join(name).exists(), "{name} must be created");
+        assert!(dir.path().join(name).exists(), "{name} must be created");
     }
-    let _ = std::fs::remove_dir_all(&dir);
 }

@@ -70,6 +70,10 @@ where
 
 #[tokio::test(flavor = "multi_thread")]
 async fn download_measure_and_auth() {
+    // The file backend derives its cache directory from the working directory,
+    // so the test moves into a scratch tree. Windows refuses to delete the
+    // process's current directory, so the original is kept to step back into.
+    let start_dir = std::env::current_dir().expect("the working directory");
     let workdir = std::env::temp_dir().join(format!("openbmclapi-it-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&workdir);
     std::fs::create_dir_all(&workdir).unwrap();
@@ -185,5 +189,25 @@ async fn download_measure_and_auth() {
 
     server.close();
     let _ = serving.await;
-    let _ = std::fs::remove_dir_all(&workdir);
+    // `close` stops the accept loop but does not await the connection tasks,
+    // and Windows refuses to remove a tree that is still a working directory or
+    // has an open handle in it. Retry briefly, then fail loudly: a silent
+    // `let _ =` is exactly how scratch directories used to pile up.
+    let _ = std::env::set_current_dir(&start_dir);
+    let mut failure = None;
+    for _ in 0..20 {
+        match std::fs::remove_dir_all(&workdir) {
+            Ok(()) => {
+                failure = None;
+                break;
+            }
+            Err(e) => {
+                failure = Some(e);
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+        }
+    }
+    if let Some(e) = failure {
+        panic!("the scratch directory outlived the test: {e}");
+    }
 }

@@ -105,7 +105,21 @@ src/<domain>/
   `storage/s3/sigv4.rs` → `storage/s3/sigv4_test.rs`。
 - 一个测试只验证一个行为；测试名用陈述句描述行为，不用 `test_` 前缀。
 - 单元测试不得联网、不得依赖外部服务；需要网络或真实文件的放 `tests/`。
-- 临时文件用 `std::env::temp_dir()`，测试结束清理。
+- 临时产物见 §4.1。
+
+### 4.1 临时产物
+
+单元测试一律经 `crate::testutil::{TempDir, TempFile}` 创建，不要自己拼路径：
+
+- 根目录是 `std::env::temp_dir()` 下的 `openbmclapi-tests/`，条目名带进程号 +
+  递增序号 + 标签，**每个测试唯一**。写死名字（例如 `openbmclapi-config-absent.yaml`）
+  会让并行跑的两个测试互相删目录。
+- 守卫在 `Drop` 里清理，断言失败也会清干净；最后一个守卫退出时顺手收掉空的根目录。
+- **禁止删除进程的当前目录**：Windows 会直接拒绝，`remove_dir_all` 返回错误，
+  被 `let _ =` 吞掉就是静默泄漏（曾这样积累近百个残留目录）。需要换工作目录的
+  测试，先切回原目录再删，见 `tests/http_surface.rs`。
+- `tests/` 下的集成测试无法复用 `cfg(test)` 里的守卫，按同样规则自己处理：
+  目录名带进程号，恢复工作目录后再清理。
 
 ## 5. 注释
 
