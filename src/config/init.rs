@@ -68,6 +68,7 @@ const TEMPLATE: &str = r#"# openbmclapi agent configuration.
 # sync.log, error.log and agent.log. Rotation is left to the operator.
 # log_dir: "./logs"
 # log_level: "info"
+# log_format: "pretty"   # "json" emits one object per line for a collector
 # plain_log: false
 # disable_access_log: false
 

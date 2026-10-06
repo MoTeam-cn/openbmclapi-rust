@@ -73,7 +73,7 @@ storage:
 一份配置可以带多个节点身份，它们共用一个存储后端，所以文件只校验一遍，后面的实例
 直接请求上线：
 
-`@yaml
+```yaml
 instances:
   - cluster_id: "id-a"
     cluster_secret: "secret-a"
@@ -81,7 +81,7 @@ instances:
   - cluster_id: "id-b"
     cluster_secret: "secret-b"
     port: 4001
-`@
+```
 
 每个实例要有独立的端口。`instances` 与顶层的 `cluster_id` / `cluster_secret` /
 `port` 互斥，也不能和 `ENABLE_NGINX` / `ENABLE_UPNP` 一起用。

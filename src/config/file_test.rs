@@ -135,6 +135,14 @@ fn an_empty_sources_list_is_rejected() {
 }
 
 #[test]
+fn the_log_format_can_come_from_the_file() {
+    let _guard = prepare();
+    let file = TempFile::write("config.yaml", "log_format: \"json\"\n");
+    let config = load(Some(file.path())).expect("load");
+    assert_eq!(config.log_format, "json");
+}
+
+#[test]
 fn instances_in_the_file_expand_into_one_config_each() {
     let _guard = prepare();
     std::env::remove_var("CLUSTER_ID");

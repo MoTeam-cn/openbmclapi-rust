@@ -47,7 +47,7 @@ YAML 读取器是手写的。支持注释、缩进映射、块序列、流式 `[
 一份配置可以跑多个节点身份，它们**共用一个存储后端**：文件只校验一遍，第一个实例跑完
 之后其余实例直接请求上线。
 
-`@yaml
+```yaml
 instances:
   - cluster_id: "id-a"
     cluster_secret: "secret-a"
@@ -55,14 +55,14 @@ instances:
   - cluster_id: "id-b"
     cluster_secret: "secret-b"
     port: 4001
-`@
+```
 
 等价的环境变量写法（JSON 数组）：
 
-`@bash
+```bash
 CLUSTER_INSTANCES='[{"cluster_id":"id-a","cluster_secret":"secret-a","port":4000},
                     {"cluster_id":"id-b","cluster_secret":"secret-b","port":4001}]'
-`@
+```
 
 规则：
 
@@ -72,6 +72,61 @@ CLUSTER_INSTANCES='[{"cluster_id":"id-a","cluster_secret":"secret-a","port":4000
   `cluster_public_port` / `cluster_ip` **互斥**，同时出现直接报错。
 - 多个实例不能和 `ENABLE_NGINX` 或 `ENABLE_UPNP` 一起用：它们各自只认一个公网端口。
 - 每个实例的证书放在各自的临时目录里（按 cluster_id 分），互不覆盖。
+
+## 从 Node 的 .env 迁移
+
+键名一一对应，环境变量换成 YAML 的 snake_case；`storage.options` 里的键名保持上游的
+camelCase 写法不变。
+
+| 环境变量 | YAML 键 |
+| --- | --- |
+| `CLUSTER_ID` / `CLUSTER_SECRET` | `cluster_id` / `cluster_secret` |
+| `CLUSTER_IP` | `cluster_ip`（地址或域名） |
+| `CLUSTER_PORT` / `CLUSTER_PUBLIC_PORT` | `port` / `cluster_public_port` |
+| `CLUSTER_BYOC` | `byoc` |
+| `CLUSTER_STORAGE` / `CLUSTER_STORAGE_OPTIONS` | `storage.type` / `storage.options` |
+| `CLUSTER_BMCLAPI` | `bmclapi_base` |
+| `ENABLE_NGINX` / `ENABLE_UPNP` | `enable_nginx` / `enable_upnp` |
+| `DISABLE_SIGN` / `DISABLE_ACCESS_LOG` | `disable_sign` / `disable_access_log` |
+| `NO_DAEMON` / `NO_FAST_ENABLE` | `no_daemon` / `no_fast_enable` |
+| `SSL_KEY` / `SSL_CERT` | `ssl_key` / `ssl_cert` |
+| `LOGLEVEL` / `PLAIN_LOG` / `LOG_FORMAT` / `LOG_DIR` | `log_level` / `plain_log` / `log_format` / `log_dir` |
+| `SYNC_MEMORY_BUDGET` / `MEASURE_SIZES` | `sync_memory_budget` / `measure_sizes` |
+| `CLUSTER_INSTANCES` | `instances` |
+
+例如这一份 .env：
+
+```bash
+CLUSTER_ID=x
+CLUSTER_SECRET=x
+CLUSTER_BYOC=true
+CLUSTER_PUBLIC_PORT=443
+CLUSTER_IP=bmcl-eo.moiu.cn
+CLUSTER_PORT=4888
+CLUSTER_STORAGE=alist
+CLUSTER_STORAGE_OPTIONS={"url":"http://127.0.0.1:5244/dav","basePath":"Cache/download","username":"openbmclapi","password":"openbmclapi"}
+```
+
+等价于：
+
+```yaml
+cluster_id: "x"
+cluster_secret: "x"
+byoc: true
+port: 4888
+cluster_public_port: 443
+cluster_ip: "bmcl-eo.moiu.cn"
+storage:
+  type: alist
+  options:
+    url: "http://127.0.0.1:5244/dav"
+    basePath: "Cache/download"
+    username: "openbmclapi"
+    password: "openbmclapi"
+```
+
+`byoc: true` 但没有 `ssl_cert` / `ssl_key` 时，节点按 HTTP 提供服务，由前面的反向代理
+终止 TLS——和 Node 版一致。`basePath` 带不带前导斜杠都行。
 
 ## 节点地址与域名
 

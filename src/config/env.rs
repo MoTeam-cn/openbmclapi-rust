@@ -76,6 +76,8 @@ pub struct Config {
     pub measure_sizes: Vec<u64>,
     /// Directory for per-category log files; unset keeps logging on the console.
     pub log_dir: Option<std::path::PathBuf>,
+    /// Shape of the log stream: `pretty` or `json`.
+    pub log_format: String,
     /// Node identities when several run in this process; empty means one node,
     /// described by the identity fields above.
     pub instances: Vec<Instance>,
@@ -213,6 +215,7 @@ impl Config {
             no_daemon: bool_var("NO_DAEMON"),
             no_fast_enable: bool_var("NO_FAST_ENABLE"),
             log_dir: var("LOG_DIR").map(std::path::PathBuf::from),
+            log_format: var("LOG_FORMAT").unwrap_or_else(|| "pretty".to_string()),
             instances,
             log_level: var("LOGLEVEL").unwrap_or_else(|| "info".to_string()),
             plain_log: bool_var("PLAIN_LOG"),

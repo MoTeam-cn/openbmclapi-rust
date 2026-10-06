@@ -85,6 +85,7 @@ fn apply(config: &mut Config, root: &Map<String, Value>) -> Result<()> {
             "log_dir" => {
                 config.log_dir = optional_string(key, value)?.map(std::path::PathBuf::from)
             }
+            "log_format" => config.log_format = string(key, value)?,
             "instances" => config.instances = instance_list(value)?,
             "storage" => apply_storage(config, value)?,
             other => {

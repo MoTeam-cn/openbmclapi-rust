@@ -47,7 +47,7 @@ pub fn entry() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let format = logger::LogFormat::parse(std::env::var("LOG_FORMAT").ok().as_deref());
+    let format = logger::LogFormat::parse(Some(&config.log_format));
     logger::init(
         &config.log_level,
         config.plain_log,
