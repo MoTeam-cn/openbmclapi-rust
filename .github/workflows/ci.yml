@@ -1,10 +1,21 @@
 name: CI
 
+# Only code changes run the gate. Docs, the licence and the release workflow have
+# nothing to prove here; a workflow-only push used to burn a full fmt + clippy +
+# test run for nothing.
 on:
   push:
     branches: [main]
     tags: ["v*"]
+    paths: &code
+      - "src/**"
+      - "tests/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - ".github/workflows/ci.yml"
   pull_request:
+    paths: *code
 
 env:
   CARGO_TERM_COLOR: always
