@@ -24,10 +24,11 @@ fn probe_chunk() -> Vec<u8> {
 
 /// Stream `size` megabytes back to the caller.
 ///
-/// A probe stored in the backend is preferred: it travels the real path from
-/// the backend to the client, which is what the master is trying to measure.
-/// Sizes without a stored object fall back to generating one in process, so
-/// the endpoint never regresses to an error.
+/// A stored probe is preferred: it travels the real path from the backend to the
+/// client, which is what the master is trying to measure. Whether that happens at
+/// all is the operator's call — `measure_redirect` switches it off globally and
+/// each source can opt out on its own — and any size without a stored object falls
+/// back to generating one in process, so the endpoint never regresses to an error.
 pub async fn measure(
     State(cluster): State<Arc<Cluster>>,
     Path(size): Path<String>,
@@ -55,8 +56,8 @@ pub async fn measure(
         return StatusCode::BAD_REQUEST.into_response();
     }
 
-    if cluster.config.measure_sizes.contains(&(count as u64)) {
-        match measure::serve(&*cluster.storage, count as u64).await {
+    if cluster.config.measure_redirect && cluster.config.measure_sizes.contains(&(count as u64)) {
+        match cluster.storage.serve_measure(count as u64).await {
             Ok(Some((response, stat))) => {
                 cluster.record_served(stat).await;
                 return response;

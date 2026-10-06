@@ -89,9 +89,78 @@ fn file(path: &str) -> FileInfo {
 }
 
 #[test]
-fn refuses_a_pool_of_one() {
-    let error = MultiStorage::new(vec![Fake::new(false, true) as Arc<dyn Storage>]);
-    assert!(error.is_err(), "a single source is not a pool");
+fn refuses_an_empty_pool() {
+    let error = MultiStorage::new(Vec::<Arc<dyn Storage>>::new());
+    assert!(error.is_err(), "a pool needs at least one source");
+}
+
+#[test]
+fn accepts_a_pool_of_one() {
+    let pool = MultiStorage::new(vec![Fake::new(false, true) as Arc<dyn Storage>]);
+    assert!(pool.is_ok(), "one source is a pool of one");
+}
+
+#[test]
+fn the_probe_policy_needs_one_entry_per_source() {
+    let error = MultiStorage::with_measure_redirect(
+        vec![Fake::new(false, true) as Arc<dyn Storage>],
+        vec![true, false],
+    );
+    assert!(
+        error.is_err(),
+        "a mismatched policy is a configuration error"
+    );
+}
+
+#[tokio::test]
+async fn a_probe_skips_the_sources_that_opted_out() {
+    let quiet = Fake::new(false, true);
+    let loud = Fake::new(false, true);
+    let pool = MultiStorage::with_measure_redirect(
+        vec![
+            Arc::clone(&quiet) as Arc<dyn Storage>,
+            Arc::clone(&loud) as Arc<dyn Storage>,
+        ],
+        vec![false, true],
+    )
+    .expect("the policy matches the sources");
+
+    assert!(pool.measure_redirect(), "one source agreed");
+    let served = pool.serve_measure(1).await.expect("the probe is served");
+    assert!(served.is_some(), "the source that opted in answers");
+    assert_eq!(
+        quiet.served.load(Ordering::Relaxed),
+        0,
+        "this one opted out"
+    );
+    assert_eq!(loud.served.load(Ordering::Relaxed), 1);
+}
+
+#[tokio::test]
+async fn a_probe_reports_nothing_when_every_source_opted_out() {
+    let pool = MultiStorage::with_measure_redirect(
+        vec![Fake::new(false, true) as Arc<dyn Storage>],
+        vec![false],
+    )
+    .expect("one source, one policy entry");
+
+    assert!(!pool.measure_redirect(), "nobody agreed to be measured");
+    let served = pool.serve_measure(1).await.expect("no error");
+    assert!(served.is_none(), "the caller generates the payload instead");
+}
+
+#[tokio::test]
+async fn a_probe_falls_through_a_source_that_holds_nothing() {
+    let empty = Fake::new(false, false);
+    let full = Fake::new(false, true);
+    let pool = MultiStorage::new(vec![
+        Arc::clone(&empty) as Arc<dyn Storage>,
+        Arc::clone(&full) as Arc<dyn Storage>,
+    ])
+    .expect("two sources build a pool");
+
+    let served = pool.serve_measure(1).await.expect("no error");
+    assert!(served.is_some(), "the source holding the object answers");
 }
 
 #[tokio::test]

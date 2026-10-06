@@ -1,12 +1,16 @@
-//! A pool of remote storage backends.
+//! A pool of storage backends, of one or many.
 //!
 //! Downloads rotate across the pool so no single upstream carries every
 //! request, and a source that fails falls through to the next one. Writes are
 //! replicated to every source, so any of them can serve the object later.
 //!
-//! The local `file` backend is deliberately not allowed in a pool: it is the
-//! agent's own cache, not a remote mirror, so mixing it in would give the pool
-//! two incompatible notions of where the data lives.
+//! Every configuration goes through here, even a single source, because this is
+//! where the bandwidth-probe policy lives. A member can opt out of handing out
+//! stored probes, and the pool then either measures through one that opted in or
+//! reports that there is nobody to measure through.
+//!
+//! The local `file` backend is never a probe host: it is the agent's own cache,
+//! which is never seeded with probes in the first place.
 
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -24,19 +28,36 @@ use super::backend::{ServeRequest, ServeStat, Storage};
 /// Spreads reads across several backends and replicates writes to all of them.
 pub struct MultiStorage {
     sources: Vec<Arc<dyn Storage>>,
+    /// Per source: whether probes may be served from its own link.
+    measure_redirect: Vec<bool>,
     cursor: AtomicUsize,
 }
 
 impl MultiStorage {
-    /// Build a pool. Two sources is the minimum that makes a pool meaningful.
+    /// Build a pool whose every member is a probe host.
     pub fn new(sources: Vec<Arc<dyn Storage>>) -> Result<Self> {
-        if sources.len() < 2 {
+        let policy = vec![true; sources.len()];
+        MultiStorage::with_measure_redirect(sources, policy)
+    }
+
+    /// Build a pool with an explicit per-source probe policy.
+    pub fn with_measure_redirect(
+        sources: Vec<Arc<dyn Storage>>,
+        measure_redirect: Vec<bool>,
+    ) -> Result<Self> {
+        if sources.is_empty() {
             return Err(Error::Config(
-                "a storage pool needs at least two sources".into(),
+                "a storage pool needs at least one source".into(),
+            ));
+        }
+        if sources.len() != measure_redirect.len() {
+            return Err(Error::Config(
+                "the probe policy needs one entry per source".into(),
             ));
         }
         Ok(MultiStorage {
             sources,
+            measure_redirect,
             cursor: AtomicUsize::new(0),
         })
     }
@@ -49,6 +70,15 @@ impl MultiStorage {
     /// Round-robin, so the spread is guaranteed rather than merely likely.
     fn next_index(&self) -> usize {
         self.cursor.fetch_add(1, Ordering::Relaxed) % self.sources.len()
+    }
+
+    /// Sources that agreed to answer bandwidth probes.
+    fn probe_hosts(&self) -> impl Iterator<Item = usize> + '_ {
+        self.measure_redirect
+            .iter()
+            .enumerate()
+            .filter(|(_, &on)| on)
+            .map(|(index, _)| index)
     }
 }
 
@@ -143,6 +173,44 @@ impl Storage for MultiStorage {
             }
         }
         Err(last.unwrap_or(Error::NotFound))
+    }
+
+    fn measure_redirect(&self) -> bool {
+        self.measure_redirect.iter().any(|&on| on)
+    }
+
+    async fn serve_measure(&self, size_mib: u64) -> Result<Option<(Response, ServeStat)>> {
+        let hosts: Vec<usize> = self.probe_hosts().collect();
+        if hosts.is_empty() {
+            return Ok(None);
+        }
+        // Rotate so repeated probes spread across the hosts that opted in rather
+        // than always measuring the first one.
+        let start = self.cursor.fetch_add(1, Ordering::Relaxed) % hosts.len();
+        let mut last: Option<Error> = None;
+        for offset in 0..hosts.len() {
+            let index = hosts[(start + offset) % hosts.len()];
+            match super::measure::serve_from(&*self.sources[index], size_mib).await {
+                Ok(Some(ok)) => {
+                    if offset > 0 {
+                        info!(
+                            source = index,
+                            offset, "probe served from a fallback source"
+                        );
+                    }
+                    return Ok(Some(ok));
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    warn!(source = index, error = %e, "probe source failed, trying the next one");
+                    last = Some(e);
+                }
+            }
+        }
+        match last {
+            Some(e) => Err(e),
+            None => Ok(None),
+        }
     }
 }
 

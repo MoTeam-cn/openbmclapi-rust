@@ -85,6 +85,7 @@ fn apply(config: &mut Config, root: &Map<String, Value>) -> Result<()> {
                 config.log_dir = optional_string(key, value)?.map(std::path::PathBuf::from)
             }
             "log_format" => config.log_format = string(key, value)?,
+            "measure_redirect" => config.measure_redirect = boolean(key, value)?,
             "instances" => config.instances = instance_list(value)?,
             "storage" => apply_storage(config, value)?,
             other => {
@@ -205,7 +206,7 @@ fn parse_source(label: &str, value: &Value) -> Result<StorageSource> {
         .as_object()
         .ok_or_else(|| type_error(label, "a mapping", value))?;
     for key in map.keys() {
-        if key != "type" && key != "options" {
+        if key != "type" && key != "options" && key != "measure_redirect" {
             return Err(Error::Config(format!("{label}: unknown key {key:?}")));
         }
     }
@@ -223,9 +224,14 @@ fn parse_source(label: &str, value: &Value) -> Result<StorageSource> {
         Some(options @ Value::Object(_)) => options.clone(),
         Some(other) => return Err(type_error(&format!("{label}.options"), "a mapping", other)),
     };
+    let measure_redirect = match map.get("measure_redirect") {
+        Some(value) => Some(boolean(&format!("{label}.measure_redirect"), value)?),
+        None => None,
+    };
     Ok(StorageSource {
         kind: kind.to_string(),
         options,
+        measure_redirect,
     })
 }
 

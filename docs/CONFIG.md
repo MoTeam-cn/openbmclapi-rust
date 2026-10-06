@@ -22,6 +22,7 @@
 | `NO_FAST_ENABLE` | `false` | 要求主控跳过快速启用流程。 |
 | `SYNC_MEMORY_BUDGET` | `256` | 同步时允许同时缓冲的下载字节数（MiB）。 |
 | `MEASURE_SIZES` | `0,1,2,4,8,16,32,64,128` | 预置到远端后端的 measure 对象大小（MiB），逗号分隔；留空关闭预置。 |
+| `MEASURE_REDIRECT` | `true` | 是否把已存的测速对象 302 给客户端；关掉则节点自己生成。每个源还能各自退出。 |
 | `LOGLEVEL` | `info` | `trace` / `debug` / `info` / `warn` / `error`。 |
 | `PLAIN_LOG` | `false` | 关闭 ANSI 颜色。 |
 | `LOG_FORMAT` | `pretty` | `json` 时每行输出一个 JSON 对象，供采集器使用。 |
@@ -90,7 +91,7 @@ camelCase 写法不变。
 | `NO_DAEMON` / `NO_FAST_ENABLE` | `no_daemon` / `no_fast_enable` |
 | `SSL_KEY` / `SSL_CERT` | `ssl_key` / `ssl_cert` |
 | `LOGLEVEL` / `PLAIN_LOG` / `LOG_FORMAT` / `LOG_DIR` | `log_level` / `plain_log` / `log_format` / `log_dir` |
-| `SYNC_MEMORY_BUDGET` / `MEASURE_SIZES` | `sync_memory_budget` / `measure_sizes` |
+| `SYNC_MEMORY_BUDGET` / `MEASURE_SIZES` / `MEASURE_REDIRECT` | `sync_memory_budget` / `measure_sizes` / `measure_redirect` |
 | `CLUSTER_INSTANCES` | `instances` |
 
 例如这一份 .env：
@@ -156,6 +157,7 @@ storage:
     - type: alist
       options: { url: "https://alist-a.example.com", username: "u", password: "p" }
     - type: webdav
+      measure_redirect: false
       options: { url: "https://dav-b.example.com", username: "u", password: "p" }
 ```
 
@@ -165,6 +167,7 @@ storage:
   `gc` 在每个源上分别执行后汇总计数。
 - `type` / `options`（单源）与 `sources`（多源）互斥，同时出现直接报错。
 - 池里不允许出现 `file`：本地磁盘是节点自己的缓存，不是远端镜像。
+- 每个源可以写 `measure_redirect: false`，退出测速对象的 302 应答（见下节）。
 
 ## 存储后端选项
 
@@ -242,3 +245,22 @@ storage:
 - 命中的大小由后端应答，webdav / alist / S3 / OSS 返回后端直链（302）。
 - `measure/0` 是 0 字节占位对象，主控的存活探测会请求它。
 - `measure/` 是保留区，GC 会跳过。
+
+### 谁来应答探测
+
+两层开关，都同意才会 302：
+
+| 层 | 键 | 缺省 |
+| --- | --- | --- |
+| 全局 | `measure_redirect` | `true` |
+| 单源 | 源条目里的 `measure_redirect` | `true` |
+
+解析顺序：
+
+- 全局关掉 → 一律节点自己生成，不看任何源。
+- 全局开着 → 在**开了的源**里找一个有该对象的 302 过去；轮转起点会轮换，多个源分摊探测。
+- 全局开着但没有任何源同意（例如只有一个源且它关掉了）→ 视为没有 → 节点自己生成。
+- 多个源一个开一个关 → 302 到开了的那个。
+
+关掉只影响**谁来应答**。`MEASURE_SIZES` 列出的对象仍然会复制到每个源，因为检查阶段
+要求每个源都齐；这也是这套配置里最占空间的部分（默认九档合计 255 MiB／源）。

@@ -41,6 +41,10 @@ pub struct StorageSource {
     pub kind: String,
     /// Backend-specific options; null when the backend takes none.
     pub options: serde_json::Value,
+    /// Whether probes may be served from this backend's own link.
+    ///
+    /// Unset keeps the default, which is yes.
+    pub measure_redirect: Option<bool>,
 }
 
 /// Agent configuration, read from the process environment.
@@ -62,6 +66,10 @@ pub struct Config {
     pub storage_opts: Option<serde_json::Value>,
     /// Every configured backend, in order; always at least one entry.
     pub storage_sources: Vec<StorageSource>,
+    /// Whether stored bandwidth probes may be handed out at all.
+    ///
+    /// The global switch: each source still has to agree on its own.
+    pub measure_redirect: bool,
     pub ssl_key: Option<String>,
     pub ssl_cert: Option<String>,
     pub bmclapi_base: String,
@@ -91,7 +99,12 @@ fn var(name: &str) -> Option<String> {
 }
 
 fn bool_var(name: &str) -> bool {
-    var(name).map(|v| parse_bool(&v)).unwrap_or(false)
+    bool_var_or(name, false)
+}
+
+/// Like `bool_var`, but with an explicit answer for an unset variable.
+fn bool_var_or(name: &str, default: bool) -> bool {
+    var(name).map(|v| parse_bool(&v)).unwrap_or(default)
 }
 
 /// Parse a comma-separated list of MiB sizes.
@@ -186,7 +199,9 @@ impl Config {
         let storage_sources = vec![StorageSource {
             kind: storage.clone(),
             options: storage_opts.clone().unwrap_or(serde_json::Value::Null),
+            measure_redirect: None,
         }];
+        let measure_redirect = bool_var_or("MEASURE_REDIRECT", true);
         let flavor = Flavor {
             runtime: format!("Rust/{}", crate::VERSION),
             storage: storage.clone(),
@@ -206,6 +221,7 @@ impl Config {
             storage,
             storage_opts,
             storage_sources,
+            measure_redirect,
             ssl_key: var("SSL_KEY"),
             ssl_cert: var("SSL_CERT"),
             bmclapi_base: var("CLUSTER_BMCLAPI")

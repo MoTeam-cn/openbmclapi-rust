@@ -4,27 +4,27 @@ OpenBMCLAPI（bmclapi@home）集群节点的 Rust 实现，对应 Node 版 v1.14
 
 ## 构建
 
-`@bash
+```bash
 cargo build --release
-`@
+```
 
 ## 运行
 
-`@bash
+```bash
 ./openbmclapi init     # 生成 config.yaml，每一项都有注释
 ./openbmclapi          # 启动
-`@
+```
 
 ## 配置
 
 最简的一份：
 
-`@yaml
+```yaml
 cluster_id: "集群 ID"
 cluster_secret: "集群密钥"
 storage:
   type: file
-`@
+```
 
 也可以用环境变量或 `.env`，键名与 Node 版一致。完整键列表、各存储后端选项、
 多实例写法见 [docs/CONFIG.md](docs/CONFIG.md)。

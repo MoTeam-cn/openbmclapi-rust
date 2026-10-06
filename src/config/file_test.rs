@@ -143,6 +143,29 @@ fn the_log_format_can_come_from_the_file() {
 }
 
 #[test]
+fn the_probe_switch_is_read_from_the_file() {
+    let _guard = prepare();
+    let file = TempFile::write("config.yaml", "measure_redirect: false\n");
+    let config = load(Some(file.path())).expect("load");
+    assert!(!config.measure_redirect);
+}
+
+#[test]
+fn a_source_can_opt_out_of_serving_probes() {
+    let _guard = prepare();
+    let file = TempFile::write(
+        "config.yaml",
+        "storage:\n  sources:\n    - type: webdav\n      measure_redirect: false\n      options:\n        url: \"https://example.com/dav\"\n    - type: alist\n      options:\n        url: \"https://example.com/dav\"\n",
+    );
+    let config = load(Some(file.path())).expect("load");
+    assert_eq!(config.storage_sources[0].measure_redirect, Some(false));
+    assert_eq!(
+        config.storage_sources[1].measure_redirect, None,
+        "unset keeps the default, which is yes"
+    );
+}
+
+#[test]
 fn instances_in_the_file_expand_into_one_config_each() {
     let _guard = prepare();
     std::env::remove_var("CLUSTER_ID");

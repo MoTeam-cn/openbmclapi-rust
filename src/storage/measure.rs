@@ -95,13 +95,16 @@ pub async fn ensure(storage: &dyn Storage, sizes: &[u64]) -> Result<usize> {
     Ok(written)
 }
 
-/// Serve the stored probe for `size_mib`, if the backend has one.
+/// Serve the stored probe for `size_mib` from one specific backend.
 ///
-/// `None` means there is nothing stored for that size, and the caller should fall
-/// back to generating the payload.
-pub async fn serve(storage: &dyn Storage, size_mib: u64) -> Result<Option<(Response, ServeStat)>> {
+/// `None` means that backend holds nothing for that size, so the caller should
+/// either try another source or generate the payload.
+pub async fn serve_from(
+    source: &dyn Storage,
+    size_mib: u64,
+) -> Result<Option<(Response, ServeStat)>> {
     let object = key(size_mib);
-    if !storage.exists(&object).await? {
+    if !source.exists(&object).await? {
         return Ok(None);
     }
     let request = ServeRequest {
@@ -110,7 +113,7 @@ pub async fn serve(storage: &dyn Storage, size_mib: u64) -> Result<Option<(Respo
         range: None,
         name: None,
     };
-    storage.serve(request).await.map(Some)
+    source.serve(request).await.map(Some)
 }
 
 #[cfg(test)]

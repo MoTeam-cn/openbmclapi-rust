@@ -1,8 +1,9 @@
 //! Backend selection for the configured storage sources.
 //!
-//! One source is used directly; several are wrapped in a
-//! [`MultiStorage`](super::multi::MultiStorage) pool that spreads reads and
-//! replicates writes. The configuration layer rejects `file` inside a pool.
+//! Every configuration ends up as a [`MultiStorage`](super::multi::MultiStorage)
+//! pool, which spreads reads and replicates writes. A single source is a pool of
+//! one, because the pool is also where the bandwidth-probe policy lives. The
+//! configuration layer rejects `file` alongside anything else.
 
 use std::sync::Arc;
 
@@ -16,17 +17,19 @@ use super::{alist, file, oss, s3, webdav};
 /// Build the storage backend(s) named by the configuration.
 pub fn create(config: &Config) -> Result<Arc<dyn Storage>> {
     let sources = config.storage_sources.as_slice();
-    match sources {
-        [] => Err(Error::Config("no storage source configured".into())),
-        [single] => build(config, single),
-        many => {
-            let mut built = Vec::with_capacity(many.len());
-            for source in many {
-                built.push(build(config, source)?);
-            }
-            Ok(Arc::new(MultiStorage::new(built)?))
-        }
+    if sources.is_empty() {
+        return Err(Error::Config("no storage source configured".into()));
     }
+    let mut built = Vec::with_capacity(sources.len());
+    let mut policy = Vec::with_capacity(sources.len());
+    for source in sources {
+        built.push(build(config, source)?);
+        // The local cache is never seeded with probes, so it can never serve one.
+        policy.push(source.kind != "file" && source.measure_redirect.unwrap_or(true));
+    }
+    Ok(Arc::new(MultiStorage::with_measure_redirect(
+        built, policy,
+    )?))
 }
 
 /// Build one backend. `file` takes no options and resolves to the local cache.

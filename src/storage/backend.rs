@@ -50,4 +50,20 @@ pub trait Storage: Send + Sync + 'static {
 
     /// Build the HTTP response for a download.
     async fn serve(&self, req: ServeRequest<'_>) -> Result<(Response, ServeStat)>;
+
+    /// Whether bandwidth probes may be served from this backend's own link.
+    ///
+    /// A backend that answers false never hands out a stored probe; the agent
+    /// generates the payload instead. Pools aggregate this over their members.
+    fn measure_redirect(&self) -> bool {
+        false
+    }
+
+    /// Serve the stored bandwidth probe for `size_mib`, if this backend holds one.
+    ///
+    /// None means the caller should generate the payload in process.
+    async fn serve_measure(&self, size_mib: u64) -> Result<Option<(Response, ServeStat)>> {
+        let _ = size_mib;
+        Ok(None)
+    }
 }
