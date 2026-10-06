@@ -15,6 +15,8 @@ pub enum SocketEvent {
     WardenError(Value),
     /// A server-side exception event.
     Exception(Value),
+    /// The master refused the socket session (socket.io CONNECT_ERROR).
+    ConnectError(Value),
     /// Reconnection succeeded after `attempt` failures.
     Reconnect(usize),
     /// A reconnection attempt failed.

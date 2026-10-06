@@ -96,5 +96,7 @@ storage:
 
 ## 许可证
 
-MIT，见 [LICENSE](LICENSE)。移植自
-[bangbang93/openbmclapi](https://github.com/bangbang93/openbmclapi)，同样为 MIT。
+Apache-2.0，见 [LICENSE](LICENSE) 与 [NOTICE](NOTICE)。
+
+移植自 [bangbang93/openbmclapi](https://github.com/bangbang93/openbmclapi)（MIT），
+其版权声明保留在 [NOTICE](NOTICE) 中。

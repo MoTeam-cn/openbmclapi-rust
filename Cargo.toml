@@ -4,7 +4,7 @@ version = "1.14.0"
 edition = "2021"
 rust-version = "1.82"
 description = "bmclapi@home - Rust implementation of the OpenBMCLAPI cluster agent"
-license = "MIT"
+license = "Apache-2.0"
 default-run = "openbmclapi"
 
 [[bin]]

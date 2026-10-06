@@ -209,9 +209,15 @@ impl Inner {
                 self.connected.store(true, Ordering::Relaxed);
             }
             '1' => {
-                let _ = self
-                    .events
-                    .send(SocketEvent::Disconnected("server disconnect".into()));
+                // DISCONNECT: the master ended the session. Newer servers append
+                // a reason to the packet, and dropping it is why a kick used to
+                // read as a generic "server disconnect".
+                self.connected.store(false, Ordering::Relaxed);
+                let reason = match body.trim() {
+                    "" => "server disconnect".to_string(),
+                    other => format!("server disconnect: {other}"),
+                };
+                let _ = self.events.send(SocketEvent::Disconnected(reason));
             }
             '2' => {
                 // Server-initiated event: 42["name",payload]
@@ -254,9 +260,11 @@ impl Inner {
                 }
             }
             '4' => {
-                let _ = self
-                    .events
-                    .send(SocketEvent::Exception(Value::String(body.to_string())));
+                // CONNECT_ERROR: the master refused the session outright, which
+                // is what an unknown cluster or a kicked node looks like.
+                let payload =
+                    serde_json::from_str::<Value>(body).unwrap_or(Value::String(body.to_string()));
+                let _ = self.events.send(SocketEvent::ConnectError(payload));
             }
             _ => {}
         }

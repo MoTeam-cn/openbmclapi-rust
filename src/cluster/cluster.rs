@@ -125,6 +125,11 @@ impl Cluster {
                     Ok(SocketEvent::Exception(payload)) => {
                         error!(payload = %payload, "server exception")
                     }
+                    Ok(SocketEvent::ConnectError(payload)) => {
+                        error!(payload = %payload, "the master refused the connection");
+                        cluster.is_enabled.store(false, Ordering::Relaxed);
+                        cluster.keepalive.stop();
+                    }
                     Ok(SocketEvent::Disconnected(reason)) => {
                         warn!(reason, "disconnected from master");
                         cluster.is_enabled.store(false, Ordering::Relaxed);
