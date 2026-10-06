@@ -18,7 +18,7 @@ jobs:
   # it commits anything.
   sync-version:
     name: sync the manifest version
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     outputs:
       version: ${{ steps.sync.outputs.version }}
     steps:
@@ -68,17 +68,20 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Runner labels are pinned deliberately. The ubuntu latest label
+          # migrates on its own schedule (Ubuntu 26 from 2026-10-19), which would
+          # quietly change what we build without a single commit of ours.
+          #
           # Linux, self-contained: nothing beyond the kernel at run time.
           - target: x86_64-unknown-linux-musl
-            os: ubuntu-latest
+            os: ubuntu-22.04
             label: linux-x86_64-musl-static
             archive: tar.gz
             musl: true
           # Linux, smaller but needs a glibc at least as new as the runner's.
-          # Pinned, and deliberately not ubuntu-latest: this binary links against
-          # the runner's glibc, so a newer runner silently raises the floor and
-          # drops older distributions. 22.04 keeps it at glibc 2.35. The musl
-          # build above carries its own libc and can follow the latest runner.
+          # For this one the pin is a hard requirement rather than hygiene: it
+          # links against the runner's glibc, so a newer runner silently raises
+          # the floor and drops older distributions. 22.04 keeps it at glibc 2.35.
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-22.04
             label: linux-x86_64-gnu-dynamic
@@ -186,7 +189,7 @@ jobs:
   release:
     needs: [sync-version, build]
     if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     defaults:
       run:
         shell: bash

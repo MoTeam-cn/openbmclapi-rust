@@ -170,10 +170,10 @@ src/<domain>/
   `actions/download-artifact@v8`、`Swatinem/rust-cache@v2`。此表会过期，用前重新核实。
   现查：`gh api repos/<owner>/<repo>/releases/latest --jq .tag_name`。
 - **runner 标签也是版本。** `ubuntu-latest` 会静默升级（2026-10-19 起迁到 Ubuntu 26）。
-  产物依赖 runner 的 glibc 时（`*-unknown-linux-gnu`）必须钉到具体 LTS，例如
-  `ubuntu-22.04`（glibc 2.35）；自带 libc 的（`*-unknown-linux-musl`）才可以用
-  `latest`。事故记录：gnu 动态链接版一直用 `ubuntu-latest`，升级即静默抬高 glibc 门槛，
-  老发行版直接跑不起来。
+  本仓所有 ubuntu 任务一律钉 `ubuntu-22.04`：对产物依赖 runner glibc 的那条
+  （`*-unknown-linux-gnu`）是硬要求，升级即静默抬高门槛、老发行版直接跑不起来；
+  对其余任务是为了可复现，顺带让这条信息性注解彻底消失。想拿新版 runner 当探针时，
+  单独留一个任务用 `latest` 并写清理由。
 - 用 PowerShell 改文本文件时不要用 `Set-Content -Encoding utf8`：PS 5.1 会写入 BOM，
   而 BOM 会让 `Cargo.toml` 变成非法 TOML（`Swatinem/rust-cache` 直接报
   "Invalid TOML document"）。用 `[System.IO.File]::WriteAllText` 配
