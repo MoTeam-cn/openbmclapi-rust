@@ -94,6 +94,22 @@ These are intentional and each one is a deliberate choice, not an oversight.
     log collector; `PLAIN_LOG` still controls ANSI output and `RUST_LOG`
     overrides `LOGLEVEL` for per-module filtering.
 
+16. **nginx is actually started.** The front-end was implemented but never
+    invoked, so `ENABLE_NGINX=true` silently did nothing. The agent now binds a
+    loopback port and hands it to nginx, which owns the public port and
+    terminates TLS; `/auth` is reachable again as nginx's `auth_request` target.
+17. **The local file backend writes atomically.** Node wrote straight to the
+    final path, so a concurrent download could observe a half-written object.
+    This port fills a `.part` sibling and renames it into place, and the GC
+    skips staging files.
+18. **The sync pass holds a byte budget.** Downloads are buffered whole so
+    their checksum can be verified, and `concurrency` alone bounds how many run
+    at once but not how large they are. A budget (`SYNC_MEMORY_BUDGET`, default
+    256 MiB) is handed out by size, so a large object takes the budget alone.
+19. **The sync pass checks free space first.** It refuses a pass that would not
+    fit and warns once the filesystem drops below 5% free, instead of filling
+    the disk and failing in less legible ways.
+
 ## Not ported
 
 * `pkg`-based single-binary packaging (`package.json#pkg`) — `cargo build`

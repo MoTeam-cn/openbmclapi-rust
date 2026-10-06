@@ -1,7 +1,8 @@
 //! Local filesystem storage (the default backend).
 
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use async_trait::async_trait;
 use axum::body::Body;
@@ -63,7 +64,15 @@ impl Storage for FileStorage {
         if let Some(parent) = target.parent() {
             tokio::fs::create_dir_all(parent).await?;
         }
-        tokio::fs::write(&target, content).await?;
+        // Write beside the target and rename into place. A reader arriving
+        // mid-write then either misses the object or sees all of it, never a
+        // truncated body; rename is atomic within one filesystem.
+        let staging = staging_path(&target);
+        tokio::fs::write(&staging, content).await?;
+        if let Err(e) = tokio::fs::rename(&staging, &target).await {
+            let _ = tokio::fs::remove_file(&staging).await;
+            return Err(e.into());
+        }
         Ok(())
     }
 
@@ -120,6 +129,11 @@ impl Storage for FileStorage {
                     .strip_prefix(&self.cache_dir)
                     .map(|rel| rel.to_string_lossy().replace('\\', "/"))
                     .unwrap_or_default();
+                // A staging file belongs to a write that is still in flight;
+                // collecting it would make that write fail.
+                if key.ends_with(STAGING_SUFFIX) {
+                    continue;
+                }
                 if !wanted.contains(&key) {
                     info!(path = %path.display(), "delete expire file");
                     if tokio::fs::remove_file(&path).await.is_ok() {
@@ -190,6 +204,23 @@ impl Storage for FileStorage {
     }
 }
 
+/// Suffix marking an object that is still being written.
+const STAGING_SUFFIX: &str = ".part";
+
+/// A sibling path to fill before renaming onto the final name.
+///
+/// The pid and a counter keep concurrent writers apart, and staying in the same
+/// directory keeps the rename on one filesystem.
+fn staging_path(target: &Path) -> PathBuf {
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let serial = COUNTER.fetch_add(1, Ordering::Relaxed);
+    let name = target
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "object".to_string());
+    target.with_file_name(format!("{name}.{}.{serial}.part", std::process::id()))
+}
+
 /// Parse a single-range `Range` header, ignoring multi-range requests.
 fn parse_single_range(total: i64, header: &str) -> Option<(i64, i64)> {
     if total <= 0 {
@@ -228,3 +259,7 @@ impl IntoResponse for FileStorage {
         StatusCode::NOT_IMPLEMENTED.into_response()
     }
 }
+
+#[cfg(test)]
+#[path = "file_test.rs"]
+mod tests;

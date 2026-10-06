@@ -50,6 +50,9 @@ const TEMPLATE: &str = r#"# openbmclapi agent configuration.
 #         username: "user"
 #         password: "secret"
 
+# Sync tuning.
+# sync_memory_budget: 256   # MiB of download bodies buffered at once
+
 # Logging.
 # log_level: "info"
 # plain_log: false

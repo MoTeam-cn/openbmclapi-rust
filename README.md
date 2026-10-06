@@ -110,12 +110,13 @@ storage:
 | `CLUSTER_STORAGE_OPTIONS` | – | 所选后端的 JSON 选项。 |
 | `CLUSTER_BMCLAPI` | `https://openbmclapi.bangbang93.com` | 主控地址。 |
 | `SSL_KEY` / `SSL_CERT` | – | PEM 文件路径或内联 PEM 内容（仅 BYOC）。 |
-| `ENABLE_NGINX` | `false` | 在节点前挂 nginx。 |
+| `ENABLE_NGINX` | `false` | 在节点前挂 nginx：nginx 接管公网端口并从磁盘直接吐缓存，节点退到 loopback 端口只处理回源。需要系统已安装 nginx。 |
 | `ENABLE_UPNP` | `false` | 用 UPnP IGD 映射公网端口。 |
 | `DISABLE_ACCESS_LOG` | `false` | 关闭逐请求访问日志。 |
 | `DISABLE_SIGN` | `false` | 跳过 `s`/`e` 签名校验（仅限可信网络）。 |
 | `NO_DAEMON` | `false` | 单进程运行，不拉起受监管 worker。 |
 | `NO_FAST_ENABLE` | `false` | 要求主控跳过快速启用流程。 |
+| `SYNC_MEMORY_BUDGET` | `256` | 同步时允许同时缓冲的下载字节数（MiB）。 |
 | `LOGLEVEL` | `info` | `trace` / `debug` / `info` / `warn` / `error`。 |
 | `PLAIN_LOG` | `false` | 关闭 ANSI 颜色。 |
 | `LOG_FORMAT` | `pretty` | `json` 时每行输出一个 JSON 对象，供采集器使用。 |
@@ -210,13 +211,23 @@ alist / OpenList 被打满时会连带把 agent 拖死（Node 版就崩在这里
 而不是继续压。连接池也已调优（`pool_max_idle_per_host` 从 reqwest 默认的无上限降到 16，
 并设置空闲回收、TCP keepalive 与 `read_timeout`，避免长下载被总超时切断）。
 
+### 同步与本地缓存
+
+- **字节预算**：同步时按文件大小分配内存额度，默认 256 MiB（`SYNC_MEMORY_BUDGET`）。
+  下载的响应体要整包缓冲才能校验哈希，所以额度按大小发放——大文件独占额度，小文件照常并发，
+  峰值内存有上限，不会被「并发数 × 文件大小」撑爆。
+- **磁盘预检**：开始同步前先读剩余空间，装不下就中止并说明还差多少，而不是把盘写满；
+  剩余空间低于 5% 时告警。
+- **原子写入**：本地 `file` 后端先写同目录的 `.part` 暂存文件再 `rename`。并发下载要么看不到
+  对象、要么拿到完整对象，不会读到半截；GC 跳过暂存文件，不会误删正在进行的写入。
+
 ## HTTP 接口
 
 | 路由 | 用途 |
 | --- | --- |
 | `GET /download/{hash}` | 返回已缓存的对象。除设了 `DISABLE_SIGN` 外必须带合法 `s`/`e` 签名。未命中时回源主控拉取，并对并发请求去重、校验和。 |
 | `GET /measure/{size}` | 带宽探针，流式返回 `size` MiB（上限 200）的 `0066ccff`。 |
-| `GET /auth` | nginx `auth_request` 的校验端点，校验 `x-original-uri` 的签名。 |
+| `GET /auth` | nginx `auth_request` 的校验端点，校验 `x-original-uri` 的签名，通过回 204、否则 403。nginx 自己算不了 HMAC，靠它决定放行。该 location 是 `internal`，只被 nginx 内部调用。 |
 
 监听端在 TLS（ALPN）下同时说 HTTP/2 与 HTTP/1.1，非 TLS 下为 HTTP/1.1，由 hyper 的
 auto 驱动按连接协商。
@@ -231,10 +242,12 @@ src/
   bootstrap.rs   worker 启动流程：认证、证书、监听、端口检查、同步、启用
   cli.rs         命令行：run / init
   config/        配置：环境变量、YAML 文件、手写 YAML 读取器
+  disk.rs        剩余空间探测（unix statvfs / Windows GetDiskFreeSpaceExW）
   token.rs       HMAC 挑战/应答 + 后台令牌刷新
   client.rs      主控 HTTP 客户端（Bearer 认证、响应缓存）
   filelist.rs    手写 Avro 解码器，解析主控文件清单
   cluster/       注册、同步、下载、GC、计数器
+                 budget.rs    同步的字节预算闸门
   keepalive.rs   每分钟上报循环，出错自动重启
   socketio/      engine.io v4 / socket.io v4 客户端
   server.rs      hyper auto（h1/h2）监听 + rustls 配置
@@ -284,6 +297,8 @@ cargo test --offline --test http_surface
 - 对象键在所有平台统一用 `/` 分隔，远端键跨平台完全一致（Node 版用宿主分隔符）。
 - nginx 反代到 loopback TCP 端口而非 unix socket，因此在 Windows 上也能用。
 - 阿里云 OSS 与 S3 直接实现（Signature V1 / SigV4），不经过厂商 SDK。
+- `ENABLE_NGINX` 真正生效（上游是 unix socket，这里是 loopback TCP，Windows 也能用）。
+- 本地写入原子（先写 `.part` 再 rename）、同步有字节预算与磁盘预检——上游都是整包缓冲且不查空间。
 
 ## 许可证
 

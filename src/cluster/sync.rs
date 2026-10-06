@@ -7,17 +7,21 @@ use std::time::Duration;
 use futures::StreamExt;
 use serde_json::json;
 use tokio::sync::Mutex;
-use tracing::{debug, error, info, trace};
+use tracing::{debug, error, info, trace, warn};
 
 use crate::error::{Error, Result};
 use crate::types::{FileInfo, FileList, SyncConfig};
 use crate::util::{hash_to_filename, now_ms};
 
+use super::budget::ByteBudget;
 use super::checksum::validate_file;
 use super::cluster::Cluster;
 
 /// Retries per file when syncing, matching `p-retry` in the Node agent.
 const SYNC_RETRIES: u32 = 10;
+
+/// Warn once free space falls below this fraction of the filesystem.
+const LOW_SPACE_RATIO: f64 = 0.05;
 
 impl Cluster {
     /// Download every file that is missing or size-mismatched.
@@ -33,16 +37,28 @@ impl Cluster {
         info!(count = missing.len(), "mismatch found, starting sync");
         info!(concurrency = sync.concurrency, "sync strategy");
 
+        self.check_free_space(&missing).await?;
+
         let concurrency = sync.concurrency.max(1);
         let total = missing.len();
         let done = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let has_error = Arc::new(AtomicBool::new(false));
+        let budget = ByteBudget::new(self.config.sync_memory_budget.saturating_mul(1024 * 1024));
+        info!(
+            budget_mib = self.config.sync_memory_budget,
+            "download memory budget"
+        );
 
         let results = futures::stream::iter(missing.into_iter())
             .map(|file| {
                 let done = Arc::clone(&done);
                 let has_error = Arc::clone(&has_error);
+                let budget = &budget;
                 async move {
+                    // Hold the reservation for the whole download: the body is
+                    // buffered so its checksum can be verified, so the budget
+                    // has to cover it until the write finishes.
+                    let _reservation = budget.acquire(file.size.max(0) as u64).await;
                     let outcome = self.sync_one(&file).await;
                     let processed = done.fetch_add(1, Ordering::Relaxed) + 1;
                     match &outcome {
@@ -69,6 +85,44 @@ impl Cluster {
             info!("sync complete");
             Ok(())
         }
+    }
+
+    /// Refuse a sync that would not fit on the cache filesystem.
+    ///
+    /// Filling the disk breaks the agent in ways that are hard to diagnose, so
+    /// it is better to fail the pass with a clear message than to half-fill it.
+    async fn check_free_space(&self, missing: &[FileInfo]) -> Result<()> {
+        let cache_dir = self.config.cache_dir();
+        // The probe needs a path that exists. The file backend creates this in
+        // `check`, but a remote backend may never have touched it.
+        let _ = tokio::fs::create_dir_all(&cache_dir).await;
+
+        let needed: u64 = missing.iter().map(|file| file.size.max(0) as u64).sum();
+        // Ten percent of headroom covers staging files and filesystem metadata.
+        let required = needed + needed / 10;
+        let usage = match crate::disk::usage(&cache_dir) {
+            Ok(usage) => usage,
+            Err(e) => {
+                // A filesystem we cannot probe is not a reason to refuse work.
+                debug!(error = %e, "cannot read free space, skipping the check");
+                return Ok(());
+            }
+        };
+        if usage.free < required {
+            return Err(Error::storage(format!(
+                "not enough free space: {} MiB free, about {} MiB needed",
+                usage.free / (1024 * 1024),
+                required / (1024 * 1024)
+            )));
+        }
+        if usage.free_ratio() < LOW_SPACE_RATIO {
+            warn!(
+                free_mib = usage.free / (1024 * 1024),
+                free_percent = (usage.free_ratio() * 100.0).round(),
+                "the cache filesystem is getting full"
+            );
+        }
+        Ok(())
     }
 
     async fn sync_one(&self, file: &FileInfo) -> Result<()> {

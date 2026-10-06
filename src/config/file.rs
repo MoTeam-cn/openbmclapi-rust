@@ -77,6 +77,7 @@ fn apply(config: &mut Config, root: &Map<String, Value>) -> Result<()> {
             "no_fast_enable" => config.no_fast_enable = boolean(key, value)?,
             "log_level" => config.log_level = string(key, value)?,
             "plain_log" => config.plain_log = boolean(key, value)?,
+            "sync_memory_budget" => config.sync_memory_budget = positive(key, value)?,
             "storage" => apply_storage(config, value)?,
             other => {
                 return Err(Error::Config(format!(
@@ -192,6 +193,23 @@ fn boolean(key: &str, value: &Value) -> Result<bool> {
         Value::Number(number) if number.as_u64() == Some(1) => Ok(true),
         other => Err(type_error(key, "a boolean", other)),
     }
+}
+
+fn positive(key: &str, value: &Value) -> Result<u64> {
+    let number = match value {
+        Value::Number(number) => number
+            .as_u64()
+            .ok_or_else(|| type_error(key, "a positive number", value))?,
+        Value::String(text) => text
+            .trim()
+            .parse::<u64>()
+            .map_err(|e| Error::Config(format!("{key:?} is not a number: {e}")))?,
+        other => return Err(type_error(key, "a positive number", other)),
+    };
+    if number == 0 {
+        return Err(Error::Config(format!("{key:?} must be greater than zero")));
+    }
+    Ok(number)
 }
 
 fn port(key: &str, value: &Value) -> Result<u16> {

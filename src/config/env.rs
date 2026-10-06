@@ -14,6 +14,8 @@ use crate::util::parse_bool;
 pub const DEFAULT_BMCLAPI_BASE: &str = "https://openbmclapi.bangbang93.com";
 /// Default listening port.
 pub const DEFAULT_PORT: u16 = 4000;
+/// Default cap on the download bytes buffered during one sync pass, in MiB.
+pub const DEFAULT_SYNC_MEMORY_MIB: u64 = 256;
 
 /// Runtime description advertised to the master.
 #[derive(Debug, Clone, Serialize)]
@@ -62,6 +64,8 @@ pub struct Config {
     pub no_fast_enable: bool,
     pub log_level: String,
     pub plain_log: bool,
+    /// MiB of download bodies that may be buffered at once during a sync.
+    pub sync_memory_budget: u64,
     pub flavor: Flavor,
 }
 
@@ -74,6 +78,10 @@ fn var(name: &str) -> Option<String> {
 
 fn bool_var(name: &str) -> bool {
     var(name).map(|v| parse_bool(&v)).unwrap_or(false)
+}
+
+fn num_var(name: &str) -> Option<u64> {
+    var(name).and_then(|v| v.trim().parse::<u64>().ok())
 }
 
 fn required(name: &str) -> Result<String> {
@@ -134,9 +142,10 @@ impl Config {
             bmclapi_base: var("CLUSTER_BMCLAPI")
                 .unwrap_or_else(|| DEFAULT_BMCLAPI_BASE.to_string()),
             no_daemon: bool_var("NO_DAEMON"),
-            no_fast_enable: var("NO_FAST_ENABLE").map(|v| v == "true").unwrap_or(false),
+            no_fast_enable: bool_var("NO_FAST_ENABLE"),
             log_level: var("LOGLEVEL").unwrap_or_else(|| "info".to_string()),
             plain_log: bool_var("PLAIN_LOG"),
+            sync_memory_budget: num_var("SYNC_MEMORY_BUDGET").unwrap_or(DEFAULT_SYNC_MEMORY_MIB),
             flavor,
         })
     }

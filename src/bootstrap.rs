@@ -47,7 +47,10 @@ pub async fn run(config: Config) -> Result<()> {
         cluster.request_cert().await?;
     }
 
-    let tls = if use_https {
+    // nginx terminates TLS and owns the public port; the agent then speaks
+    // plain HTTP on a loopback port that only nginx can reach.
+    let behind_nginx = cluster.config.enable_nginx;
+    let tls = if use_https && !behind_nginx {
         let dir = cluster.config.tmp_dir();
         let cert = tokio::fs::read_to_string(dir.join("cert.pem")).await?;
         let key = tokio::fs::read_to_string(dir.join("key.pem")).await?;
@@ -57,11 +60,28 @@ pub async fn run(config: Config) -> Result<()> {
     };
 
     let router = routes::router(Arc::clone(&cluster));
-    let bind = format!("0.0.0.0:{}", cluster.config.port);
+    let bind = if behind_nginx {
+        "127.0.0.1:0".to_string()
+    } else {
+        format!("0.0.0.0:{}", cluster.config.port)
+    };
     let http = Arc::new(HttpServer::bind(&bind, router, tls).await?);
     let serving = {
         let http = Arc::clone(&http);
         tokio::spawn(async move { http.serve().await })
+    };
+
+    // The public port belongs to nginx, so it can only start once the agent
+    // knows which loopback port it landed on.
+    let mut nginx = if behind_nginx {
+        let app_port = http.local_addr()?.port();
+        info!(
+            public_port = cluster.config.port,
+            app_port, "starting the nginx front-end"
+        );
+        Some(crate::nginx::setup(&cluster, cluster.config.port, use_https, app_port).await?)
+    } else {
+        None
     };
 
     cluster.port_check().await?;
@@ -92,6 +112,9 @@ pub async fn run(config: Config) -> Result<()> {
     wait_for_shutdown().await;
     info!("shutting down, unregistering cluster");
     checker.abort();
+    if let Some(nginx) = nginx.as_mut() {
+        nginx.shutdown().await;
+    }
     if let Err(e) = cluster.disable().await {
         error!(error = %e, "failed to unregister");
     }

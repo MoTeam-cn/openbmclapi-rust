@@ -4,6 +4,7 @@
 //! RPCs in `master`, file sync in `sync`, accounting in `counters` and the
 //! pure checksum helpers in `checksum`.
 
+mod budget;
 mod checksum;
 // The prescribed split keeps the type in a same-named submodule; that is a
 // deliberate layout choice, not accidental module inception.
@@ -13,5 +14,6 @@ mod counters;
 mod master;
 mod sync;
 
+pub use budget::ByteBudget;
 pub use checksum::{is_unicast, validate_file};
 pub use cluster::Cluster;
