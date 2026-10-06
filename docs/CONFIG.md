@@ -73,6 +73,25 @@ CLUSTER_INSTANCES='[{"cluster_id":"id-a","cluster_secret":"secret-a","port":4000
 - 多个实例不能和 `ENABLE_NGINX` 或 `ENABLE_UPNP` 一起用：它们各自只认一个公网端口。
 - 每个实例的证书放在各自的临时目录里（按 cluster_id 分），互不覆盖。
 
+## 节点地址与域名
+
+Agent 不碰域名，它只做两件事：
+
+1. 在 `port-check` 和 `enable` 里上报 `host` + `port`，取值来自 `cluster_ip` 与
+   `cluster_public_port`。
+2. 用 `request-cert` 向主控要证书——这个请求**不带任何参数**，主控凭认证过的集群身份
+   决定证书签给谁。
+
+域名归主控：用主控分配的子域还是绑自己的域名，都在主控那边设置；它把名字指向哪里，
+取决于你上报的 `host` + `port`。
+
+- `cluster_ip` 不填时不上报该字段，主控按连接的来源地址自行判断。
+- 填了就用你给的值，**可以是域名而不限于 IP**（例如 `node-a.example.com`），
+  主控拿它做端口探测。
+- 多实例时每个实例各带 `cluster_ip` / `cluster_public_port`，
+  所以多个域名可以分别指向不同实例。
+- 开了 `ENABLE_UPNP` 时，探测到的公网 IP 会覆盖 `cluster_ip`。
+
 ## 多存储源
 
 `storage` 可以写成一池远端源：

@@ -33,7 +33,7 @@ const TEMPLATE: &str = r#"# openbmclapi agent configuration.
 
 # Listening port and advertised address.
 # port: 4000
-# cluster_ip: "203.0.113.10"
+# cluster_ip: "203.0.113.10"   # an address or a hostname the master can dial
 # cluster_public_port: 4000
 # bmclapi_base: "https://openbmclapi.bangbang93.com"
 
