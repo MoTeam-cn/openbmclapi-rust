@@ -70,12 +70,7 @@ impl Config {
         if self.instances.is_empty() {
             return Ok(vec![self.clone()]);
         }
-        // Both own the public port, so neither can front several nodes.
-        if self.instances.len() > 1 && self.enable_nginx {
-            return Err(Error::Config(
-                "enable_nginx owns one public port and cannot front several instances".into(),
-            ));
-        }
+        // UPnP maps one public port, so it cannot front several nodes.
         if self.instances.len() > 1 && self.enable_upnp {
             return Err(Error::Config(
                 "enable_upnp cannot map several instances; forward their ports yourself".into(),

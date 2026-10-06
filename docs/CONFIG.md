@@ -15,7 +15,6 @@
 | `CLUSTER_BMCLAPI` | `https://openbmclapi.bangbang93.com` | 主控地址。 |
 | `CLUSTER_INSTANCES` | – | 多个节点身份的 JSON 数组。设了它就不能再设 `CLUSTER_ID` / `CLUSTER_SECRET` / `CLUSTER_PORT` / `CLUSTER_PUBLIC_PORT` / `CLUSTER_IP`。 |
 | `SSL_KEY` / `SSL_CERT` | – | PEM 文件路径或内联 PEM 内容（仅 BYOC）。 |
-| `ENABLE_NGINX` | `false` | 在节点前挂 nginx：nginx 接管公网端口并从磁盘直接吐缓存，节点退到 loopback 端口。需要系统已安装 nginx。 |
 | `ENABLE_UPNP` | `false` | 用 UPnP IGD 映射公网端口。 |
 | `DISABLE_ACCESS_LOG` | `false` | 关闭逐请求访问日志。 |
 | `DISABLE_SIGN` | `false` | 跳过 `s`/`e` 签名校验（仅限可信网络）。 |
@@ -70,7 +69,7 @@ CLUSTER_INSTANCES='[{"cluster_id":"id-a","cluster_secret":"secret-a","port":4000
 - `cluster_public_port` 缺省等于 `port`，`cluster_ip` 缺省自动探测。
 - `instances` 与顶层的 `cluster_id` / `cluster_secret` / `port` /
   `cluster_public_port` / `cluster_ip` **互斥**，同时出现直接报错。
-- 多个实例不能和 `ENABLE_NGINX` 或 `ENABLE_UPNP` 一起用：它们各自只认一个公网端口。
+- 多个实例不能和 `ENABLE_UPNP` 一起用：它只认一个公网端口。
 - 每个实例的证书放在各自的临时目录里（按 cluster_id 分），互不覆盖。
 
 ## 从 Node 的 .env 迁移
@@ -86,7 +85,7 @@ camelCase 写法不变。
 | `CLUSTER_BYOC` | `byoc` |
 | `CLUSTER_STORAGE` / `CLUSTER_STORAGE_OPTIONS` | `storage.type` / `storage.options` |
 | `CLUSTER_BMCLAPI` | `bmclapi_base` |
-| `ENABLE_NGINX` / `ENABLE_UPNP` | `enable_nginx` / `enable_upnp` |
+| `ENABLE_UPNP` | `enable_upnp` |
 | `DISABLE_SIGN` / `DISABLE_ACCESS_LOG` | `disable_sign` / `disable_access_log` |
 | `NO_DAEMON` / `NO_FAST_ENABLE` | `no_daemon` / `no_fast_enable` |
 | `SSL_KEY` / `SSL_CERT` | `ssl_key` / `ssl_cert` |

@@ -1,8 +1,8 @@
 //! End-to-end checks for the agent HTTP surface.
 //!
 //! Boots the real router against the local file storage backend and exercises
-//! the signature-protected download path, the bandwidth probe and the nginx
-//! auth endpoint.
+//! the signature-protected download path, the bandwidth probe and the auth
+//! endpoint.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -166,7 +166,7 @@ async fn download_measure_and_auth() {
     let response = send(&url, || client.get(&url)).await;
     assert_eq!(response.status(), 400);
 
-    // 6. The nginx auth endpoint validates x-original-uri.
+    // 6. The auth endpoint validates x-original-uri.
     let expires = base36(now_ms() + 60_000);
     let signature = sign(hash, SECRET, &expires);
     let original = format!("/download/{hash}?s={signature}&e={expires}");

@@ -15,7 +15,6 @@ fn base() -> MutexGuard<'static, ()> {
         "CLUSTER_PORT",
         "CLUSTER_PUBLIC_PORT",
         "CLUSTER_IP",
-        "ENABLE_NGINX",
         "ENABLE_UPNP",
     ] {
         std::env::remove_var(key);
@@ -139,21 +138,6 @@ fn identity_variables_are_refused_alongside_instances() {
     );
     let error = Config::from_env().expect_err("CLUSTER_ID must not be combined");
     assert!(error.to_string().contains("cannot be combined"), "{error}");
-}
-
-#[test]
-fn several_instances_cannot_share_the_public_port() {
-    let _guard = base();
-    std::env::set_var("ENABLE_NGINX", "true");
-    std::env::set_var(
-        "CLUSTER_INSTANCES",
-        r#"[{"cluster_id":"a","cluster_secret":"sa","port":4000},
-            {"cluster_id":"b","cluster_secret":"sb","port":4001}]"#,
-    );
-    std::env::remove_var("CLUSTER_ID");
-    std::env::remove_var("CLUSTER_SECRET");
-    let error = config().split().expect_err("nginx fronts one port");
-    assert!(error.to_string().contains("enable_nginx"), "{error}");
 }
 
 #[test]

@@ -53,10 +53,9 @@ pub(super) async fn run(cluster: Arc<Cluster>, role: Role) -> Result<()> {
 
     let use_https = setup_certificate(&cluster).await?;
 
-    // nginx terminates TLS and owns the public port; the agent then speaks
-    // plain HTTP on a loopback port that only nginx can reach.
-    let behind_nginx = cluster.config.enable_nginx;
-    let tls = if use_https && !behind_nginx {
+    // The agent owns the public port and terminates TLS itself. Whatever sits
+    // in front of it — a reverse proxy, a CDN, nothing — is the operator's call.
+    let tls = if use_https {
         let dir = cluster.config.tmp_dir();
         let cert = tokio::fs::read_to_string(dir.join("cert.pem")).await?;
         let key = tokio::fs::read_to_string(dir.join("key.pem")).await?;
@@ -66,28 +65,11 @@ pub(super) async fn run(cluster: Arc<Cluster>, role: Role) -> Result<()> {
     };
 
     let router = routes::router(Arc::clone(&cluster));
-    let bind = if behind_nginx {
-        "127.0.0.1:0".to_string()
-    } else {
-        format!("0.0.0.0:{}", cluster.config.port)
-    };
+    let bind = format!("0.0.0.0:{}", cluster.config.port);
     let http = Arc::new(HttpServer::bind(&bind, router, tls).await?);
     let serving = {
         let http = Arc::clone(&http);
         tokio::spawn(async move { http.serve().await })
-    };
-
-    // The public port belongs to nginx, so it can only start once the agent
-    // knows which loopback port it landed on.
-    let mut nginx = if behind_nginx {
-        let app_port = http.local_addr()?.port();
-        info!(
-            public_port = cluster.config.port,
-            app_port, "starting the nginx front-end"
-        );
-        Some(crate::nginx::setup(&cluster, cluster.config.port, use_https, app_port).await?)
-    } else {
-        None
     };
 
     cluster.port_check().await?;
@@ -108,9 +90,6 @@ pub(super) async fn run(cluster: Arc<Cluster>, role: Role) -> Result<()> {
     wait_for_shutdown().await;
     info!(cluster_id = %id, "shutting down, unregistering cluster");
     checker.abort();
-    if let Some(nginx) = nginx.as_mut() {
-        nginx.shutdown().await;
-    }
     if let Err(e) = cluster.disable().await {
         error!(error = %e, "failed to unregister");
     }

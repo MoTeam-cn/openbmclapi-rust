@@ -14,7 +14,6 @@ pub mod error;
 pub mod filelist;
 pub mod keepalive;
 pub mod logger;
-pub mod nginx;
 pub mod routes;
 pub mod server;
 pub mod socketio;

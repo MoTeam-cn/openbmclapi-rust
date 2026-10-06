@@ -36,85 +36,59 @@ repository.
 ## Behavioural deviations
 
 These are intentional and each one is a deliberate choice, not an oversight.
-
 1. **Runtime flavour.** `flavor.runtime` is reported as `Rust/<crate version>`
-   where Node reported `Node.js/<process.version>`. The field is informational.
-2. **Storage keys use `/` on every platform.** Node's `path.join` produced
+   where Node reported `Node.js/<process.version>`. The field is informational.2. **Storage keys use `/` on every platform.** Node's `path.join` produced
    backslash-separated object keys on Windows; here remote keys are always
-   `ab/abcdef…`, and only the local file backend maps them onto native paths.
-3. **nginx upstream is TCP, not a unix socket.** `ENABLE_NGINX` binds the agent
-   to an ephemeral loopback port and renders that into the nginx config, so the
-   feature works on Windows too. The template also drops the `user` directive
-   (unsupported by nginx for Windows) and uses `http2 on;` (nginx ≥ 1.25.1).
-4. **MinIO garbage collection compares basenames.** Node compared the full
+   `ab/abcdef…`, and only the local file backend maps them onto native paths.3. **MinIO garbage collection compares basenames.** Node compared the full
    relative key against a set of hashes, which classified every object as
    expired. Both cloud backends now compare the object basename (the content
-   hash) so a GC pass cannot delete live data.
-5. **S3 uses path-style addressing.** `minio-js` may pick virtual-host style for
+   hash) so a GC pass cannot delete live data.4. **S3 uses path-style addressing.** `minio-js` may pick virtual-host style for
    non-IP hosts. Path-style is used unconditionally because the configuration
    schema exposes no `pathStyle` switch and it is the safest choice for MinIO
-   and other S3-compatible endpoints.
-6. **OSS uses a read timeout rather than a total timeout** in proxy mode, so a
+   and other S3-compatible endpoints.5. **OSS uses a read timeout rather than a total timeout** in proxy mode, so a
    long streaming download is not cut off at 300 s. The MinIO client keeps the
-   total timeout.
-7. **Token refresh retries.** Node scheduled the next refresh only after a
-   successful refresh; this port retries on the same schedule after a failure.
-8. **File-list refresh uses the new list.** Node passed the *initial* file list
+   total timeout.6. **Token refresh retries.** Node scheduled the next refresh only after a
+   successful refresh; this port retries on the same schedule after a failure.7. **File-list refresh uses the new list.** Node passed the *initial* file list
    to `syncFiles` inside its periodic check; here the freshly fetched list is
-   used, which is what the surrounding code clearly intends.
-9. **Multi-range requests.** The local file backend answers a single `Range` with
+   used, which is what the surrounding code clearly intends.8. **Multi-range requests.** The local file backend answers a single `Range` with
    `206`; multi-range requests receive the full `200` body (a valid server
-   response) instead of a `multipart/byteranges` payload.
-10. **Redirect reporting is coarser.** `reqwest` exposes the final URL but not
+   response) instead of a `multipart/byteranges` payload.9. **Redirect reporting is coarser.** `reqwest` exposes the final URL but not
     the intermediate chain, so `openbmclapi/report` receives
-    `[requested, final]` rather than every hop.
-11. **Progress reporting.** The `cli-progress` multi-bar is reproduced: two
+    `[requested, final]` rather than every hop.10. **Progress reporting.** The `cli-progress` multi-bar is reproduced: two
     lines redrawn in place, one over the file count and one over the bytes of
     the object on show. Concurrent downloads each keep their own byte counter
     and the bar shows the oldest one still in flight, so unrelated files never
     share a number. The display only draws on a terminal; a piped run, or
-    `PLAIN_LOG`, falls back to the periodic `sync progress` line every 100 files.
-12. **Upstream resilience.** The Node agent had no error boundary on the WebDAV
+    `PLAIN_LOG`, falls back to the periodic `sync progress` line every 100 files.11. **Upstream resilience.** The Node agent had no error boundary on the WebDAV
     and alist paths, so a struggling upstream (typically AList/OpenList) took
     the agent down with it. This port wraps every WebDAV request in a circuit
     breaker, an adaptive concurrency cap and bounded retries, streams proxied
     bodies instead of buffering them, treats a 429 as the WebDAV auth lockout
     rather than as load, and answers `503` plus `Retry-After` when the backend
-    itself is the problem.
-13. **A YAML configuration file.** Node read the environment only. This port
+    itself is the problem.12. **A YAML configuration file.** Node read the environment only. This port
     layers `config.yaml` (or `--config FILE`) over the environment, so a file
     alone can configure an agent, and adds `openbmclapi init` to write a
     commented skeleton. The YAML reader is hand-written: the offline registry
     carries no YAML crate, and the project already hand-writes Avro, SigV4 and
     the engine.io client. It emits `serde_json::Value`, so every existing
-    option lookup is untouched.
-14. **Multi-source storage pools.** A `sources` list builds a pool that
+    option lookup is untouched.13. **Multi-source storage pools.** A `sources` list builds a pool that
     round-robins downloads across the sources, falls through to the next one
     when a source fails, replicates writes to every source, treats an object as
     present only when all sources have it, unions the missing-file reports and
     sums the GC counters. The local `file` backend is rejected inside a pool
-    because it is the agent's cache rather than a remote mirror.
-15. **Structured logs.** `LOG_FORMAT=json` emits one JSON object per line for a
+    because it is the agent's cache rather than a remote mirror.14. **Structured logs.** `LOG_FORMAT=json` emits one JSON object per line for a
     log collector; `PLAIN_LOG` still controls ANSI output and `RUST_LOG`
     overrides `LOGLEVEL` for per-module filtering.
-
-16. **nginx is actually started.** The front-end was implemented but never
-    invoked, so `ENABLE_NGINX=true` silently did nothing. The agent now binds a
-    loopback port and hands it to nginx, which owns the public port and
-    terminates TLS; `/auth` is reachable again as nginx's `auth_request` target.
-17. **The local file backend writes atomically.** Node wrote straight to the
+15. **The local file backend writes atomically.** Node wrote straight to the
     final path, so a concurrent download could observe a half-written object.
     This port fills a `.part` sibling and renames it into place, and the GC
-    skips staging files.
-18. **The sync pass holds a byte budget.** Downloads are buffered whole so
+    skips staging files.16. **The sync pass holds a byte budget.** Downloads are buffered whole so
     their checksum can be verified, and `concurrency` alone bounds how many run
     at once but not how large they are. A budget (`SYNC_MEMORY_BUDGET`, default
-    256 MiB) is handed out by size, so a large object takes the budget alone.
-19. **The sync pass checks free space first.** It refuses a pass that would not
+    256 MiB) is handed out by size, so a large object takes the budget alone.17. **The sync pass checks free space first.** It refuses a pass that would not
     fit and warns once the filesystem drops below 5% free, instead of filling
     the disk and failing in less legible ways.
-
-20. **Bandwidth probes live in the backend.** Node generated the `/measure`
+18. **Bandwidth probes live in the backend.** Node generated the `/measure`
     payload in process, so the probe never touched the storage backend and
     measured little more than the agent's own loopback. A remote backend now
     gets one object per configured size, uploaded after the storage check under
@@ -125,28 +99,31 @@ These are intentional and each one is a deliberate choice, not an oversight.
     runs on, so the route keeps generating the payload. The payload is an
     incompressible xorshift stream rather than a repeating pattern, so a
     compressing backend or CDN cannot flatter the measurement, and every
-    backend's GC skips the reserved folder.
-21. **Per-category log files.** `LOG_DIR` appends the stream to `access.log`,
+    backend's GC skips the reserved folder.19. **Per-category log files.** `LOG_DIR` appends the stream to `access.log`,
     `sync.log`, `error.log` and `agent.log` alongside the console. Node wrote
     everything to stdout and left collection to the operator. Files are opened
     for append, so a restart continues the history and rotation stays with
     logrotate and friends.
-
-22. **Log line shapes.** The application line is what pino-pretty printed with
+20. **Log line shapes.** The application line is what pino-pretty printed with
     `translateTime: 'SYS:standard'` and `singleLine: true`: local time with its
     offset, the level, the pid, then the message with any structured fields
     trailing, and no module path. The access line is morgan's `combined`, which
     is Apache's common log format plus referrer and user agent; it needs the
     peer address, so a connection stamps it onto every request it carries.
     Levels are coloured only when the writer has a terminal.
-
-23. **Several nodes in one process.** `instances` (or `CLUSTER_INSTANCES`) runs
+21. **Several nodes in one process.** `instances` (or `CLUSTER_INSTANCES`) runs
     several identities at once over one shared storage backend, so the file
     verification is a single pass and the remaining nodes go straight to
     activation. Node ran one node per process, which meant one download pass
     per node against the same backend.
 
 ## Not ported
+
+- **The bundled nginx front-end.** Node could launch an nginx that owned the
+  public port and served the cache straight off disk. Here the agent owns its
+  port and terminates TLS itself, so what sits in front is the operator's
+  choice — point your own reverse proxy or CDN at it. `GET /auth` remains, for
+  a front-end that wants an `auth_request` hook.
 
 * `pkg`-based single-binary packaging (`package.json#pkg`) — `cargo build`
   already produces a self-contained executable.

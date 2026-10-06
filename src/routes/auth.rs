@@ -1,4 +1,4 @@
-//! `GET /auth` — nginx `auth_request` endpoint.
+//! `GET /auth` — signature check for a front-end `auth_request` hook.
 
 use std::collections::HashMap;
 use std::sync::Arc;

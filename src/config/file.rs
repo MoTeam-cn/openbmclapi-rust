@@ -71,7 +71,6 @@ fn apply(config: &mut Config, root: &Map<String, Value>) -> Result<()> {
             "byoc" => config.byoc = boolean(key, value)?,
             "disable_access_log" => config.disable_access_log = boolean(key, value)?,
             "disable_sign" => config.disable_sign = boolean(key, value)?,
-            "enable_nginx" => config.enable_nginx = boolean(key, value)?,
             "enable_upnp" => config.enable_upnp = boolean(key, value)?,
             "ssl_key" => config.ssl_key = optional_string(key, value)?,
             "ssl_cert" => config.ssl_cert = optional_string(key, value)?,

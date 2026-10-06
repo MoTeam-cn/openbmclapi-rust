@@ -74,7 +74,6 @@ const TEMPLATE: &str = r#"# openbmclapi agent configuration.
 
 # Optional features.
 # disable_sign: false
-# enable_nginx: false
 # enable_upnp: false
 # byoc: false
 # no_daemon: false

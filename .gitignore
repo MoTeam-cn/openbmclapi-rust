@@ -31,7 +31,6 @@ rustc-ice-*.txt
 # Runtime state
 /cache/
 /access.log
-/nginx.pid
 
 # Local environment overrides
 .env
